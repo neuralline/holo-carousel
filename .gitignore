@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+
+
+
+# Dependency directories
+node_modules
+Config
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+#git
+*.git
+# Output of 'npm pack'
+*.tgz
+
+
+
+#editors
+idea
+.idea
+.vscode
+.firebaserc
+firebase.json
+/.firebase
