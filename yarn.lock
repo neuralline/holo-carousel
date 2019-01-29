@@ -249,10 +249,10 @@ cross-spawn@^6.0.5:
     shebang-command "^1.2.0"
     which "^1.2.9"
 
-cyre@^1.0.2:
-  version "1.0.2"
-  resolved "https://registry.yarnpkg.com/cyre/-/cyre-1.0.2.tgz#98411af87f1bae1f41a9021bb88518eff3fc7378"
-  integrity sha512-8a7ADQ6S+2mFdo5Zwule7j6DGdQL0cbI72umPiTbILjlNiQ3g5D0cW05OjXhg8G0FVfa6p2+1SfCRnLfgkYpxg==
+cyre@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/cyre/-/cyre-1.0.3.tgz#e370a9def6e66786e52b50272bc27afbd0f5802d"
+  integrity sha512-GdqLSdyZg/us0L4CDGad3wP3toMPbQ/kUoEh/gi18mfClH4l2A/gKSljExmpjxPojL9+jsssa65+xP3tNv7rYQ==
 
 debug@2.6.9:
   version "2.6.9"

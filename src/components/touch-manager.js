@@ -25,15 +25,15 @@ export const TouchManager = (au) => {
         _Touch.pressed ? _Touch._touchEnd(e) : false;
     }))
 
-    cyre.on('AnimateForward', _Touch.animateSlideForward)
-    cyre.on('AnimateBackward', _Touch.animateSlideBackward)
-    cyre.on('nxtSlide', _Touch.nxtSlide)
-    cyre.on('prvSlide', _Touch.prvSlide)
-    cyre.on('firstSlide', _Touch.firstSlide)
-    cyre.on('lastSlide', _Touch.lastSlide)
-    cyre.on('FOCUS', _Touch.focus)
-    cyre.on('wheeler', _Touch.wheeler)
-    cyre.on('activate', _Touch.activate)
+    cyre.type('AnimateForward', _Touch.animateSlideForward)
+    cyre.type('AnimateBackward', _Touch.animateSlideBackward)
+    cyre.type('nxtSlide', _Touch.nxtSlide)
+    cyre.type('prvSlide', _Touch.prvSlide)
+    cyre.type('firstSlide', _Touch.firstSlide)
+    cyre.type('lastSlide', _Touch.lastSlide)
+    cyre.type('FOCUS', _Touch.focus)
+    cyre.type('wheeler', _Touch.wheeler)
+    cyre.type('activate', _Touch.activate)
 
 }
 export default TouchManager

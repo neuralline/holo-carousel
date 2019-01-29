@@ -37,6 +37,6 @@
     "touch"
   ],
   "dependencies": {
-    "cyre": "^1.0.2"
+    "cyre": "^1.0.3"
   }
 }

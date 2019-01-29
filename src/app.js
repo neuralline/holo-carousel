@@ -101,15 +101,15 @@ const Holo = (() => {
         console.log("%c HOLO - Initiating holo v2.2 ", "background: #022d5f; color: white; display: block;");
         TouchManager(au)
         //listen for events
-        cyre.respond('SCREEN', 'SCREEN', 'SCREEN', 50)      //adjust width
-        cyre.on('SNAP', _snapWidth);
-        cyre.on('WIDTH', _width);
-        cyre.on('SHAKE', _addShake);
-        cyre.on('SCREEN', _aure_manager)
+        cyre.dispatch({ id: 'ON SCREEN RESIZE', type: 'SCREEN', interval: 50 })      //adjust width
+        cyre.type('SNAP', _snapWidth);
+        cyre.type('WIDTH', _width);
+        cyre.type('SHAKE', _addShake);
+        cyre.type('SCREEN', _aure_manager)
     }
 
     document.addEventListener("DOMContentLoaded", () => { //when dom loads do something       
-        cyre.respond('LOADING', 'LOADING', 100)
+
     }, false);
 
     const _aure_manager = () => {
@@ -119,21 +119,19 @@ const Holo = (() => {
     };
 
     window.addEventListener('resize', () => { //when window loads do something
-        cyre.respond('SCREEN', 'SCREEN', 'SCREEN', 250)
+        cyre.dispatch({ id: 'ON SCREEN RESIZE', type: 'SCREEN', interval: 250 })
     }, false);
 
     window.onload = () => {
         cyre.respond('LOADING', 'LOADED', 100)
     };
 
-
     return {
         TOUCH: _Touch,
         INIT: _init,
         HOLO: _getAure,
         BUILD: holoCreateElement,
-        AUTO: holoInitiate,
-
+        AUTO: holoInitiate
     }
 
 })();

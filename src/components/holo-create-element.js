@@ -23,35 +23,35 @@ export const holoCreateElement = (slide) => {
         au.io.wheel ? au.elm.carousel.addEventListener('wheel', (e) => { _Touch.wheeler(e, au.id) }, false) : 0;
         au.io.animate ? cyre.respond('Animate' + au.id, (au.io.animate > 0 ? "AnimateForward" : 'AnimateBackward'), au, au.io.duration, au.io.loop) : 0;
     }
-    cyre.channel({
+    cyre.action({
         id: 'SNAP' + au.id,
-        action: 'SNAP',
+        type: 'SNAP',
         payload: au
     });
-    cyre.channel({
+    cyre.action({
         id: "prvSlide" + au.id,
-        action: "prvSlide",
+        type: "prvSlide",
         payload: au
     })
-    cyre.channel({
+    cyre.action({
         id: "nxtSlide" + au.id,
-        action: "nxtSlide",
+        type: "nxtSlide",
         payload: au
     })
-    cyre.channel({
+    cyre.action({
         id: "lastSlide" + au.id,
-        action: "lastSlide",
+        type: "lastSlide",
         payload: au
     })
-    cyre.channel({
+    cyre.action({
         id: "firstSlide" + au.id,
-        action: "firstSlide",
+        type: "firstSlide",
         payload: au
     })
 
-    cyre.channel({
+    cyre.action({
         id: "activate" + au.id,
-        action: "activate",
+        type: "activate",
         payload: au
     })
 

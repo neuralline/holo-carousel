@@ -352,35 +352,35 @@ const holoCreateElement = (slide) => {
         au.io.wheel ? au.elm.carousel.addEventListener('wheel', (e) => { _Touch.wheeler(e, au.id); }, false) : 0;
         au.io.animate ? cyre.respond('Animate' + au.id, (au.io.animate > 0 ? "AnimateForward" : 'AnimateBackward'), au, au.io.duration, au.io.loop) : 0;
     }
-    cyre.channel({
+    cyre.action({
         id: 'SNAP' + au.id,
-        action: 'SNAP',
+        type: 'SNAP',
         payload: au
     });
-    cyre.channel({
+    cyre.action({
         id: "prvSlide" + au.id,
-        action: "prvSlide",
+        type: "prvSlide",
         payload: au
     });
-    cyre.channel({
+    cyre.action({
         id: "nxtSlide" + au.id,
-        action: "nxtSlide",
+        type: "nxtSlide",
         payload: au
     });
-    cyre.channel({
+    cyre.action({
         id: "lastSlide" + au.id,
-        action: "lastSlide",
+        type: "lastSlide",
         payload: au
     });
-    cyre.channel({
+    cyre.action({
         id: "firstSlide" + au.id,
-        action: "firstSlide",
+        type: "firstSlide",
         payload: au
     });
 
-    cyre.channel({
+    cyre.action({
         id: "activate" + au.id,
-        action: "activate",
+        type: "activate",
         payload: au
     });
 
@@ -452,15 +452,15 @@ const TouchManager = (au) => {
         _Touch.pressed ? _Touch._touchEnd(e) : false;
     }));
 
-    cyre.on('AnimateForward', _Touch.animateSlideForward);
-    cyre.on('AnimateBackward', _Touch.animateSlideBackward);
-    cyre.on('nxtSlide', _Touch.nxtSlide);
-    cyre.on('prvSlide', _Touch.prvSlide);
-    cyre.on('firstSlide', _Touch.firstSlide);
-    cyre.on('lastSlide', _Touch.lastSlide);
-    cyre.on('FOCUS', _Touch.focus);
-    cyre.on('wheeler', _Touch.wheeler);
-    cyre.on('activate', _Touch.activate);
+    cyre.type('AnimateForward', _Touch.animateSlideForward);
+    cyre.type('AnimateBackward', _Touch.animateSlideBackward);
+    cyre.type('nxtSlide', _Touch.nxtSlide);
+    cyre.type('prvSlide', _Touch.prvSlide);
+    cyre.type('firstSlide', _Touch.firstSlide);
+    cyre.type('lastSlide', _Touch.lastSlide);
+    cyre.type('FOCUS', _Touch.focus);
+    cyre.type('wheeler', _Touch.wheeler);
+    cyre.type('activate', _Touch.activate);
 
 };
 
@@ -544,15 +544,15 @@ const Holo = (() => {
         console.log("%c HOLO - Initiating holo v2.2 ", "background: #022d5f; color: white; display: block;");
         TouchManager(au);
         //listen for events
-        cyre.respond('SCREEN', 'SCREEN', 'SCREEN', 50);      //adjust width
-        cyre.on('SNAP', _snapWidth);
-        cyre.on('WIDTH', _width);
-        cyre.on('SHAKE', _addShake);
-        cyre.on('SCREEN', _aure_manager);
+        cyre.dispatch({ id: 'ON SCREEN RESIZE', type: 'SCREEN', interval: 50 });      //adjust width
+        cyre.type('SNAP', _snapWidth);
+        cyre.type('WIDTH', _width);
+        cyre.type('SHAKE', _addShake);
+        cyre.type('SCREEN', _aure_manager);
     };
 
     document.addEventListener("DOMContentLoaded", () => { //when dom loads do something       
-        cyre.respond('LOADING', 'LOADING', 100);
+
     }, false);
 
     const _aure_manager = () => {
@@ -562,21 +562,19 @@ const Holo = (() => {
     };
 
     window.addEventListener('resize', () => { //when window loads do something
-        cyre.respond('SCREEN', 'SCREEN', 'SCREEN', 250);
+        cyre.dispatch({ id: 'ON SCREEN RESIZE', type: 'SCREEN', interval: 250 });
     }, false);
 
     window.onload = () => {
         cyre.respond('LOADING', 'LOADED', 100);
     };
 
-
     return {
         TOUCH: _Touch,
         INIT: _init,
         HOLO: _getAure,
         BUILD: holoCreateElement,
-        AUTO: holoInitiate,
-
+        AUTO: holoInitiate
     }
 
 })();
