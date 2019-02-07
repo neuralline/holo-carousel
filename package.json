@@ -1,10 +1,10 @@
 {
   "name": "holo-carousel",
-  "version": "2.0.0",
+  "version": "0.1.1",
   "description": "Lightweight carousel for javascript and react apps",
   "main": "dist/holo-carousel.cjs.js",
   "module": "dist/holo-carousel.esm.js",
-  "browser": "public/js/holo-carousel.js",
+  "browser": "dist/holo-carousel.js",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c -w",
@@ -16,14 +16,18 @@
   "homepage": "https://holo-carousel.firebaseapp.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/NeuralLine/holo-crousel"
+    "url": "https://github.com/neuralline/holo-carousel"
   },
   "devDependencies": {
+    "@babel/core": "^7.2.2",
+    "@babel/preset-env": "^7.3.1",
     "npm-run-all": "^4.1.5",
     "rollup": "^1.1.2",
+    "rollup-plugin-babel": "^4.3.2",
     "rollup-plugin-commonjs": "^9.2.0",
     "rollup-plugin-node-resolve": "^4.0.0",
-    "serve": "^10.1.1"
+    "rollup-plugin-terser": "^4.0.4",
+    "serve": "^10.1.2"
   },
   "keywords": [
     "HOLO",
@@ -37,6 +41,6 @@
     "touch"
   ],
   "dependencies": {
-    "cyre": "^1.0.3"
+    "cyre": "^1.0.6"
   }
 }

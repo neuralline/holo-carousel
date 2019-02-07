@@ -1,7 +1,7 @@
-import { _holo, _snap, events } from "./events";
+import { _holo, _snap } from "./holo-essentials";
 
 export const _transformX = (_e) => {
-    _e.transformX = _e.io.snap && _snap(_e.transformX, _e.item.width);
+    _e.transformX = _e.io.snap && _snap(_e.transformX, _e.item.width) || _e.transformX;
     _e.transformY = 0;
     if (_e.transformX >= 0) {
         _e.transformX = 0;
@@ -16,7 +16,7 @@ export const _transformX = (_e) => {
 };
 
 export const _transformY = (_e) => {
-    _e.transformY = _e.io.snap && _snap(_e.transformY, _e.item.height);
+    _e.transformY = _e.io.snap && _snap(_e.transformY, _e.item.height) || _e.transformY;
     _e.transformX = 0;
     if (_e.transformY >= 0) {
         _e.transformY = 0;

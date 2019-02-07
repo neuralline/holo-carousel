@@ -1,39 +1,41 @@
-import { cyre } from 'cyre'
-import { _holo, _wheeler, _Touch } from './events';
-export const TouchManager = (au) => {
+/** @format */
 
-    document.addEventListener('mousemove', (e) => {
-        if (_Touch.pressed) {
-            _Touch.currentX = e.clientX;
-            _Touch.currentY = e.clientY;
-        }
-    });
+import {cyre} from 'cyre'
+import Touch from './holo-touch'
+import {_holo} from './holo-essentials'
 
-    document.addEventListener('mouseup', ((e) => {
-        e.preventDefault()
-        _Touch.pressed ? _Touch._touchEnd(e) : false;
-    }))
+const TouchManager = au => {
+  document.addEventListener('mousemove', e => {
+    if (Touch.pressed) {
+      Touch.currentX = e.clientX
+      Touch.currentY = e.clientY
+    }
+  })
 
-    document.addEventListener('touchmove', (e) => {
-        if (_Touch.pressed) {
-            _Touch.currentX = e.touches[0].clientX;;
-            _Touch.currentY = e.touches[0].clientY;
-        }
-    });
+  document.addEventListener('mouseup', e => {
+    e.preventDefault()
+    Touch.pressed ? Touch._touchEnd(e) : false
+  })
 
-    document.addEventListener('touchend', ((e) => {
-        _Touch.pressed ? _Touch._touchEnd(e) : false;
-    }))
+  document.addEventListener('touchmove', e => {
+    if (Touch.pressed) {
+      Touch.currentX = e.touches[0].clientX
+      Touch.currentY = e.touches[0].clientY
+    }
+  })
 
-    cyre.type('AnimateForward', _Touch.animateSlideForward)
-    cyre.type('AnimateBackward', _Touch.animateSlideBackward)
-    cyre.type('nxtSlide', _Touch.nxtSlide)
-    cyre.type('prvSlide', _Touch.prvSlide)
-    cyre.type('firstSlide', _Touch.firstSlide)
-    cyre.type('lastSlide', _Touch.lastSlide)
-    cyre.type('FOCUS', _Touch.focus)
-    cyre.type('wheeler', _Touch.wheeler)
-    cyre.type('activate', _Touch.activate)
+  document.addEventListener('touchend', e => {
+    Touch.pressed ? Touch._touchEnd(e) : false
+  })
 
+  cyre.on('AnimateForward', Touch.animateSlideForward)
+  cyre.on('AnimateBackward', Touch.animateSlideBackward)
+  cyre.on('nxtSlide', Touch.nxtSlide)
+  cyre.on('prvSlide', Touch.prvSlide)
+  cyre.on('firstSlide', Touch.firstSlide)
+  cyre.on('lastSlide', Touch.lastSlide)
+  cyre.on('bringToFocus', Touch.focus)
+  cyre.on('wheeler', Touch.wheeler)
+  cyre.on('activate', Touch.activate)
 }
-export default TouchManager
+export {TouchManager}
