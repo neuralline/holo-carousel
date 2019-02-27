@@ -1,5 +1,5 @@
 /** @format */
-
+'use strict'
 //Project HOLO-CAROUSEL 2019
 
 // jscs:enabled
@@ -16,66 +16,70 @@
 */
 
 //HOLO self invoking function
-'use strict'
+
 import {cyre} from 'cyre'
-import {_snap, _holo, _transform} from './components/holo-essentials'
-import Touch from './components/holo-touch'
-import holoInitiate from './components/holo-initiate'
 import holoCreateElement from './components/holo-create-element'
+import {_holo, _transform, _getItemWidthHeight} from './components/holo-essentials'
+import holoInitiate from './components/holo-initiate'
+import Touch from './components/holo-touch'
 import {_transformX, _transformY} from './components/orientation-handler'
 import {TouchManager} from './components/touch-manager'
 
 const Holo = (() => {
-  //events - Javascript publish subscribe pattern
+  cyre.on('refresh carousel', state => {
+    const {virtual, shadow} = state
+    if (!virtual.id) return console.error('Holo carousel refresh error ', virtual.id)
+    shadow.container.setAttribute('style', '')
+    const {height, width} = _getItemWidthHeight(shadow.container.children[0])
+    virtual.item.height = height
+    virtual.item.width = width
+    virtual.numberOfSlots =
+      _numberOfSlots(shadow.carousel.parentNode.clientWidth, virtual.item.width, virtual.item.max) || 1
+    const calcCarouselWidth = virtual.numberOfSlots * virtual.item.width
+    const innerCarouselWidth = shadow.carousel.clientWidth
+    const calcWidth = shadow.container.children.length * virtual.item.width
+    const innerWidth = shadow.container.clientWidth || calcWidth
+    virtual.carousel.width = calcCarouselWidth || innerCarouselWidth
+    virtual.carousel.height = virtual.item.height || shadow.carousel.clientHeight
+    virtual.container.width = virtual.io.orientation ? shadow.carousel.width : innerWidth
+    virtual.container.height = shadow.container.clientHeight || virtual.item.height || 0
+    virtual.endNumber = virtual.io.orientation
+      ? -Math.abs(virtual.container.height - virtual.carousel.height)
+      : -Math.abs(virtual.container.width - virtual.carousel.width)
+    return (_holo[virtual.id].setState = virtual), cyre.call('snap to position', virtual)
+  })
 
-  const _width = _e => {
-    //manages carousel(not pure)
-    if (!_e.id) {
-      return console.error('Holo width error')
-    }
-    _e.elm.container.setAttribute('style', '')
-    const {height, width} = _getItemWidthHeight(_e.elm.container.children[0])
-    _e.item.height = height
-    _e.item.width = width
-    _e.numberOfSlots = _numberOfSlots(_e.elm.carousel.parentNode.clientWidth, _e.item.width, _e.item.max) || 1
-    const calcCarouselWidth = _e.numberOfSlots * _e.item.width
-    const innerCarouselWidth = _e.elm.carousel.clientWidth
-    const calcWidth = _e.elm.container.children.length * _e.item.width
-    const innerWidth = _e.elm.container.clientWidth || calcWidth
-
-    _e.carousel.width = calcCarouselWidth || innerCarouselWidth
-    _e.carousel.height = _e.item.height || _e.elm.carousel.clientHeight
-
-    _e.container.width = _e.io.orientation ? _e.carousel.width : innerWidth
-    _e.container.height = _e.elm.container.clientHeight || _e.item.height || 0
-    _e.endNumber = _e.io.orientation ? -Math.abs(_e.container.height - _e.carousel.height) : -Math.abs(_e.container.width - _e.carousel.width)
-
-    return _holo[_e.id].setState(_e), _snapWidth(_e)
-  }
   //snap to grid
-  const _snapWidth = au => {
+  cyre.on('SNAP', virtual => {
     //manages container
-    _holo[au.id]._style(1)
-    if (!au.id) {
-      return console.error('Holo snap error')
-    }
-    au = au.io.orientation ? _transformY(au) : _transformX(au)
-    _holo[au.id].setState(au)
-    return _transform(au.id, au.transformX, au.transformY)
-  }
+    _holo[virtual.id].updateStyle = 1
+    if (!virtual.id) return console.error('Holo snap error')
+    virtual = virtual.io.orientation ? _transformY(virtual) : _transformX(virtual)
+    _holo[virtual.id].setState = virtual
+    return _transform(virtual.id, virtual.transformX, virtual.transformY)
+  })
 
   const _carousel = (id, io = {}) => {
-    //manages container
-    console.log('Holo.id : ', _holo[id]._state.io)
-    console.log('io.id : ', io)
-
+    //_holo[id]?
+    const virtual = _holo[id].virtual
     for (const attribute in io) {
-      console.log(attribute)
-      _holo[id]._state.io[attribute] ? (_holo[id]._state.io[attribute] = io[attribute]) : console.error('Unknown Holo carousel parameter', attribute)
+      virtual.io[attribute] ? (virtual.io[attribute] = io[attribute]) : false
     }
-    return _holo[id]._state.io
+    return {ok: true, data: virtual.io}
   }
-
+  /**
+   *
+   * @param {string} id
+   */
+  const getDimensions = id => {
+    return _holo[id].getDimensions
+  }
+  /**
+   *
+   * @param {number} parent
+   * @param {number} item
+   * @param {number} max
+   */
   const _numberOfSlots = (parent, item, max) => {
     let slots = Math.floor(parent / item)
     if (max) {
@@ -86,50 +90,41 @@ const Holo = (() => {
     return slots || 1
   }
 
+  /**
+   *
+   * @param {object} _e
+   */
   const _addShake = _e => {
-    _e.elm.container.classList.add('shake-off')
+    /*     _e.elm.container.classList.add('shake-off')
     let shake = setTimeout(() => {
-      shake = 0
+      clearTimeout(shake)
       _e.elm.container.classList.remove('shake-off')
       return 0
-    }, 1000)
+    }, 1000) */
+
+    console.log('shaking')
   }
 
-  //pure function
-  const _getItemWidthHeight = e => {
-    if (!e) {
-      return 0
-    }
-    let outer = {}
-    outer.width = e.offsetWidth
-    outer.height = e.offsetHeight
-    const style = window.getComputedStyle(e, null)
-    outer.width += parseInt(style.marginLeft) + parseInt(style.marginRight)
-    outer.height += parseInt(style.marginTop) + parseInt(style.marginBottom)
-    return outer
-  }
-
-  const getAure = id => {
-    return _holo[id].getAure
-  }
-
+  /**
+   *
+   * @param {string} au
+   */
   const init = (au = 'holo-carousel') => {
     console.log('%c HOLO - Initiating holo v2.2 ', 'background: #022d5f; color: white; display: block;')
     TouchManager(au)
     //listen for events
-    cyre.action({id: 'when screen resize', type: 'SCREEN', interval: 250}) //adjust width
-    cyre.emit('when screen resize')
-    cyre.on('SNAP', _snapWidth)
-    cyre.on('WIDTH', _width)
+    cyre.action({id: 'refresh screen', interval: 250}) //adjust width
+    cyre.action({id: 'refresh carousel', interval: 250})
+    cyre.action({id: 'snap to position', type: 'SNAP'})
     cyre.on('SHAKE', _addShake)
-    cyre.on('SCREEN', _aure_manager)
+    cyre.on('refresh screen', _refresh)
   }
 
   document.addEventListener('DOMContentLoaded', () => {}, false) //when dom loads do something
 
-  const _aure_manager = () => {
+  const _refresh = () => {
     for (let id in _holo) {
-      cyre.dispatch({id: 'width' + id, type: 'WIDTH', payload: _holo[id].getState, interval: 250})
+      cyre.call('refresh carousel', _holo[id].getState)
     }
   }
 
@@ -137,9 +132,9 @@ const Holo = (() => {
     //when window resizes do something
     'resize',
     () => {
-      cyre.emit('when screen resize')
+      cyre.call('refresh screen')
     },
-    false,
+    false
   )
 
   window.onload = () => {
@@ -149,10 +144,11 @@ const Holo = (() => {
   return {
     TOUCH: Touch,
     INIT: init,
-    HOLO: getAure,
+    dimensions: getDimensions,
     BUILD: holoCreateElement,
     AUTO: holoInitiate,
     carousel: _carousel,
+    refresh: _refresh
   }
 })()
 

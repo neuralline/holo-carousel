@@ -1,18 +1,21 @@
 /** @format */
+//@ts-check
 
-import {_holo} from './holo-essentials'
 import holoCreateElement from './holo-create-element'
 
 //holo Locate all holo carousel structures ByClassName
-const holoInitiate = carouselClassName => {
-  const carousels = document.getElementsByClassName(carouselClassName) //get all carousels by this class name
+/**
+ * @param{string} carouselName get all carousels by this class name
+ */
+const holoInitiate = carouselName => {
+  const carousels = document.getElementsByClassName(carouselName)
   if (carousels.length) {
     for (let slide of carousels) {
       //for each carousel found
-      holoCreateElement(slide)
+      holoCreateElement(slide, {})
     }
   } else {
-    return console.log('@Holo : Holo carousel structure not found')
+    return console.log('@Holo : carousel structure not found')
   }
 }
 export default holoInitiate

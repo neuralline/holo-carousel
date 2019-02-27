@@ -2,7 +2,6 @@
 
 import {cyre} from 'cyre'
 import Touch from './holo-touch'
-import {_holo} from './holo-essentials'
 
 const TouchManager = au => {
   document.addEventListener('mousemove', e => {

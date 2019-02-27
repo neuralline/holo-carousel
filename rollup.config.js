@@ -12,26 +12,26 @@ export default [
     input: 'src/app.js',
     output: {
       name: 'Holo',
-      file: pkg.browser,
+      file: pkg.public,
       format: 'umd',
-      indent: false,
+      indent: false
     },
     plugins: [
       resolve(), // so Rollup can find `ms`
-      commonjs(), // so Rollup can convert `ms` to an ES module
-      babel({
-        exclude: 'node_modules/**',
-      }),
+      commonjs() // so Rollup can convert `ms` to an ES module
+      /*	babel({
+				exclude: 'node_modules/**'
+			})  ,
       terser({
         compress: {
           ecma: 6,
           pure_getters: true,
           unsafe: true,
           unsafe_comps: true,
-          warnings: false,
-        },
-      }),
-    ],
+          warnings: false
+        }
+      }) */
+    ]
   },
 
   // CommonJS (for Node) and ES module (for bundlers) build.
@@ -44,6 +44,6 @@ export default [
     input: 'src/app.js',
     external: ['ms'],
     output: [{file: pkg.main, format: 'cjs'}, {file: pkg.module, format: 'es'}] /* ,
-    plugins: [babel()], */,
-  },
+    plugins: [babel()], */
+  }
 ]
