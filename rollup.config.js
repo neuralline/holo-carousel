@@ -43,7 +43,7 @@ export default [
   {
     input: 'src/app.js',
     external: ['ms'],
-    output: [{file: pkg.main, format: 'cjs'}, {file: pkg.module, format: 'es'}] /* ,
-    plugins: [babel()], */
+    output: [{file: pkg.main, format: 'cjs'}, {file: pkg.module, format: 'es'}],
+    plugins: [babel()]
   }
 ]

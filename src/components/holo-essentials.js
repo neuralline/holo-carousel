@@ -1,6 +1,6 @@
 /** @format */
 
-'use strict'
+import {cyre} from 'cyre'
 //@ts-check
 /**
 
@@ -19,9 +19,6 @@ const _holo = {} //main instance
  * @param {number} y
  * @param {number} z
  */
-const _transform = (id, x = 0, y = 0, z = 0) => {
-  _holo[id].shadow.container.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`
-}
 
 /**
  *
@@ -67,4 +64,99 @@ const _getItemWidthHeight = e => {
   return outer
 }
 
-export {_holo, _transform, _snap, _isClicked, _swipe, ioData, _getItemWidthHeight}
+const _sliderPosition = virtual => {
+  if (virtual.transform >= 100) {
+    virtual.transform = 100
+    virtual.endOfSlide = 1 //Left EnD of the carousel
+  } else if (virtual.transform + 100 <= virtual.endOfSlidePosition) {
+    virtual.transform = virtual.endOfSlidePosition - 100
+    virtual.endOfSlide = -1 //Right end of the carousel
+  } else {
+    virtual.endOfSlide = 0 //in the middle carousel
+  }
+  return virtual
+}
+
+//manage active/highlighted slides
+const activate = ([element, virtual]) => {
+  virtual.transformX = -Math.abs(element.offsetLeft)
+  cyre.call('SNAP' + virtual.id, virtual)
+  element.classList.add('active')
+}
+
+//previous slide operator
+const prvSlide = virtual => {
+  if (virtual.endOfSlide === 1) return //console.error('shake');
+  virtual.transformX += virtual.carousel.width || 0
+  virtual.transformY += virtual.carousel.height || 0
+  return cyre.call('SNAP' + virtual.id, virtual)
+}
+
+//next slide operator
+const nxtSlide = virtual => {
+  if (virtual.endOfSlide === -1) return //console.error('shake');
+  virtual.transformX -= virtual.carousel.width || 0
+  virtual.transformY -= virtual.carousel.height || 0
+  return cyre.call('SNAP' + virtual.id, virtual)
+}
+
+//jump to first slide operator
+const firstSlide = virtual => {
+  virtual.transformX = 0
+  virtual.transformY = 0
+  virtual.endOfSlide = 1
+  return cyre.call('SNAP' + virtual.id, virtual)
+}
+
+//jump to last slide operator
+const lastSlide = virtual => {
+  virtual.transformX = virtual.endOfSlidePosition
+  virtual.transformY = virtual.endOfSlidePosition
+  virtual.endOfSlide = -1
+  return cyre.call('SNAP' + virtual.id, virtual)
+}
+
+//animate slides
+const animateSlideForward = virtual => {
+  console.log('animating', virtual)
+  if (virtual.endOfSlide === -1) {
+    return cyre.call('firstSlide' + virtual.id, virtual)
+  }
+  return cyre.call('nxtSlide' + virtual.id, virtual)
+}
+
+const animateSlideBackward = virtual => {
+  if (virtual.endOfSlide === 1) {
+    return cyre.call('lastSlide' + virtual.id, virtual)
+  }
+  return cyre.call('prvSlide' + virtual.id, virtual)
+}
+
+//mouse 3rd button 'wheel' controller
+const wheeler = (e, id) => {
+  e.preventDefault()
+  const virtual = _holo[id].getVirtual
+  if (e.deltaY < 0) {
+    cyre.call('prvSlide' + virtual.id, virtual)
+  } else if (e.deltaY > 0) {
+    cyre.call('nxtSlide' + virtual.id, virtual)
+  }
+}
+
+export {
+  _holo,
+  _snap,
+  _isClicked,
+  _sliderPosition,
+  _swipe,
+  ioData,
+  _getItemWidthHeight,
+  wheeler,
+  animateSlideBackward,
+  animateSlideForward,
+  lastSlide,
+  firstSlide,
+  nxtSlide,
+  prvSlide,
+  activate
+}

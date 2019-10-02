@@ -8,6 +8,7 @@ class HoloCli {
   /*
 
      H.O.L.O -  C.L.I
+     constrictor and default values
 
      */
 
@@ -21,8 +22,10 @@ class HoloCli {
       title: null,
       description: null,
       duration: 600,
+      transitionTiming: 'cubic- bezier(0.215, 0.61, 0.355, 1)',
       transformX: 0,
       transformY: 0,
+      transformZ: 0,
       numberOfSlots: 0,
       endOfSlide: 0,
       item: {
@@ -38,11 +41,11 @@ class HoloCli {
     this.virtual.io = {
       id: this.id || 0,
       enabled: 1,
-      wheel: 1,
+      wheel: 0,
       controller: 0,
       drag: 1,
       swipe: 1,
-      snap: 1,
+      snap: 3,
       focus: 1,
       animate: 1,
       animateDirection: 1,

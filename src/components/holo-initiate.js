@@ -8,10 +8,10 @@ import holoCreateElement from './holo-create-element'
  * @param{string} carouselName get all carousels by this class name
  */
 const holoInitiate = carouselName => {
+  console.log('@holo holo auto activated :', carouselName)
   const carousels = document.getElementsByClassName(carouselName)
   if (carousels.length) {
     for (let slide of carousels) {
-      //for each carousel found
       holoCreateElement(slide, {})
     }
   } else {

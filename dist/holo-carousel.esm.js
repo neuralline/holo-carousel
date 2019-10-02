@@ -1,168 +1,226 @@
 import { cyre } from 'cyre';
 
+function _defineProperties(target, props) {
+  for (var i = 0; i < props.length; i++) {
+    var descriptor = props[i];
+    descriptor.enumerable = descriptor.enumerable || false;
+    descriptor.configurable = true;
+    if ("value" in descriptor) descriptor.writable = true;
+    Object.defineProperty(target, descriptor.key, descriptor);
+  }
+}
+
+function _createClass(Constructor, protoProps, staticProps) {
+  if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+  if (staticProps) _defineProperties(Constructor, staticProps);
+  return Constructor;
+}
+
+function _extends() {
+  _extends = Object.assign || function (target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var source = arguments[i];
+
+      for (var key in source) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          target[key] = source[key];
+        }
+      }
+    }
+
+    return target;
+  };
+
+  return _extends.apply(this, arguments);
+}
+
+function _inheritsLoose(subClass, superClass) {
+  subClass.prototype = Object.create(superClass.prototype);
+  subClass.prototype.constructor = subClass;
+  subClass.__proto__ = superClass;
+}
+
 /**
  *  default entries
  *
  * @format
  */
-
-class HoloCli {
-  /*
-
+var HoloCli =
+/*
      H.O.L.O -  C.L.I
-
+   constrictor and default values
      */
-
-  constructor() {
-    this.id = 0;
-    this.virtual = {
-      id: this.id || 0,
-      carousel: {},
-      container: {},
-      io: {},
-      title: null,
-      description: null,
-      duration: 600,
-      transformX: 0,
-      transformY: 0,
-      numberOfSlots: 0,
-      endOfSlide: 0,
-      item: {
-        max: 8
-      }
-    };
-
-    this.shadow = {
-      carousel: {},
-      container: {}
-    };
-
-    this.virtual.io = {
-      id: this.id || 0,
-      enabled: 1,
-      wheel: 1,
-      controller: 0,
-      drag: 1,
-      swipe: 1,
-      snap: 1,
-      focus: 1,
-      animate: 1,
-      animateDirection: 1,
-      duration: 0,
-      loop: 200,
-      orientation: 0,
-      active: true,
-      onClick: true,
-      onDoubleClick: true
-    };
-
-    this.style = {};
-  }
-}
+function HoloCli() {
+  this.id = 0;
+  this.virtual = {
+    id: this.id || 0,
+    carousel: {},
+    container: {},
+    io: {},
+    title: null,
+    description: null,
+    duration: 600,
+    transitionTiming: 'cubic- bezier(0.215, 0.61, 0.355, 1)',
+    transformX: 0,
+    transformY: 0,
+    transformZ: 0,
+    numberOfSlots: 0,
+    endOfSlide: 0,
+    item: {
+      max: 8
+    }
+  };
+  this.shadow = {
+    carousel: {},
+    container: {}
+  };
+  this.virtual.io = {
+    id: this.id || 0,
+    enabled: 1,
+    wheel: 0,
+    controller: 0,
+    drag: 1,
+    swipe: 1,
+    snap: 3,
+    focus: 1,
+    animate: 1,
+    animateDirection: 1,
+    duration: 0,
+    loop: 200,
+    orientation: 0,
+    active: true,
+    onClick: true,
+    onDoubleClick: true
+  };
+  this.style = {};
+};
 
 /** @format */
 
-class Aure extends HoloCli {
+var Aure =
+/*#__PURE__*/
+function (_HoloCli) {
+  _inheritsLoose(Aure, _HoloCli);
+
   /*
-
-     H.O.L.O - A.U.R.E`
+       H.O.L.O - A.U.R.E`
      aka holo-create-carousel
+       */
+  function Aure(slide, io) {
+    var _this;
 
-     */
-  constructor(slide, io = {}) {
-    super();
-    if (!slide) {
-      return console.error('@Holo: Oh putain` problame with the given slider ')
-    }
-    if (!slide.id) {
-      console.error('@Holo: oh putain` carousel has no ID ');
-      id = 'OhPutain' + performance.now();
-      this.id = id;
-      side.id = this.id;
-    }
-    // console.log('@Aure`  Initializing slider       ---2.0.1');
-    this.shadow.carousel = slide;
-    this.id = slide.id;
-    this.shadow.container = this.shadow.carousel.getElementsByClassName('holo-container')[0] || 0;
-    this.shadow.container ? this.initializeHolo() : console.error('@Holo : holo-container is empty : ', this.id);
+    _this = _HoloCli.call(this) || this;
+    if (!slide) console.error('@Holo: Oh putain` no slide'); // console.log('@Aure`  Initializing slider       ---2.0.1');
+
+    _this.id = slide.id || 'OhPutain' + performance.now();
+    _this.shadow.carousel = slide;
+    _this.shadow.container = _this.shadow.carousel.getElementsByClassName('holo-container')[0] || 0;
+    _this.shadow.container ? _this.initializeHolo() : console.error('@Holo : Oh Putain` holo-container not found : ', _this.id);
+    return _this;
   }
 
-  initializeHolo() {
+  var _proto = Aure.prototype;
+
+  _proto.initializeHolo = function initializeHolo() {
     this.shadow.carousel.width = this.shadow.carousel.clientWidth || 0; //initializeHolo
+
     if (!this.shadow.container.children.length) {
-      return console.error('@Holo: no holo element found  : ', this.id)
+      this.virtual.noOfChildren = 0;
+      return console.error('@Holo: Oh Putain`  holo-container is empty  : ', this.id);
     }
+
     this.virtual.id = this.id;
-    this.virtual.childLength = this.shadow.container.children.length;
+    this.virtual.noOfChildren = this.shadow.container.children.length;
     this.virtual.carousel.width = this.shadow.container.clientWidth;
     this.virtual.carousel.height = this.shadow.container.clientHeight;
     this.virtual.startNumber = 0;
-    this.virtual.endNumber = 0;
+    this.virtual.endOfSlidePosition = 0;
     this.virtual.item.min = 1;
-    /* 
-   this.virtual.item.max = this.virtual.carousel.dataset.max || 0
-    this.virtual.io.wheel = !!this.virtual.carousel.dataset.wheel
-    this.virtual.io.orientation = !!this.virtual.carousel.dataset.orientation    
-    this.virtual.io.animate = Number(this.virtual.carousel.dataset.animate) || 0
-    this.virtual.io.duration = Number(this.virtual.carousel.dataset.duration) || 0
-    this.virtual.io.loop = Number(this.virtual.carousel.dataset.loop) || 0
-    this.virtual.io.focus = this.virtual.carousel.dataset.focus || 0 */
-  }
+  };
 
-  get getVirtual() {
-    //provide virtual dom state upon request
-    return this.virtual
-  }
-  get getShadow() {
-    //provide shadow dom state upon request
-    return this.shadow
-  }
-  get getState() {
-    //provide shadow dom state upon request
-    return {virtual: this.virtual, shadow: this.shadow}
-  }
-  get getDimensions() {
-    return {
-      car: {
-        w: this.shadow.carousel.width,
-        h: this.shadow.carousel.height
-      },
-      con: {
-        w: this.shadow.container.width,
-        h: this.shadow.container.height,
-        x: this.shadow.transformX,
-        y: this.shadow.transformY,
-        s: {}
+  _createClass(Aure, [{
+    key: "getVirtual",
+    get: function get() {
+      //provide virtual dom state upon request
+      return _extends({}, this.virtual);
+    }
+  }, {
+    key: "getShadow",
+    get: function get() {
+      //provide shadow dom state upon request
+      return this.shadow;
+    }
+  }, {
+    key: "getState",
+    get: function get() {
+      //provide shadow dom state upon request
+      return {
+        virtual: this.getVirtual,
+        shadow: this.getShadow
+      };
+    }
+  }, {
+    key: "getDimensions",
+    get: function get() {
+      return {
+        car: {
+          w: this.shadow.carousel.width,
+          h: this.shadow.carousel.height
+        },
+        con: {
+          w: this.shadow.container.width,
+          h: this.shadow.container.height,
+          x: this.shadow.transformX,
+          y: this.shadow.transformY,
+          z: this.shadow.transformZ
+        }
+      };
+    } //update _state object
+
+  }, {
+    key: "setState",
+    set: function set(virtual) {
+      if (!virtual) return false;
+      this.virtual = _extends({}, this.virtual, {}, virtual);
+      this.shadow.container.style.transform = "translate3d(" + this.virtual.transformX + "px, " + this.virtual.transformY + "px, " + this.virtual.transformZ + "px)"; //END OF DOM ACCESS
+    } //update _state object
+
+  }, {
+    key: "setDimension",
+    set: function set(virtual) {
+      if (!virtual) return false;
+      this.virtual = _extends({}, this.virtual, {}, virtual, {}, virtual.io);
+      this.virtual.io.orientation ? 0 : this.shadow.carousel.style.width = this.virtual.carousel.width + 'px';
+      this.virtual.io.orientation ? this.shadow.carousel.style.height = this.virtual.carousel.height + 'px' : 0; //END OF DOM ACCESS
+    }
+    /**
+     *
+     * @param {number} on 1 = add style 0 = remove style
+     */
+
+  }, {
+    key: "updateStyle",
+    set: function set(on) {
+      if (on === void 0) {
+        on = 0;
+      }
+
+      //add or remove transition duration to container
+      if (on) {
+        this.shadow.container.style.transitionDuration = this.virtual.duration + 'ms';
+        this.shadow.container.style.transitionTimingFunction = this.virtual.transitionTiming;
+      } else {
+        this.shadow.container.style.transitionDuration = '0ms';
+        this.shadow.container.style.transitionTimingFunction = 'linear';
       }
     }
-  }
+  }]);
 
-  //update _state object
-  set setState(state) {
-    if (!state) return false
-    this.virtual = {...state};
-    this.virtual.io.orientation ? 0 : (this.shadow.carousel.style.width = state.carousel.width + 'px');
-    this.virtual.io.orientation ? (this.shadow.carousel.style.height = state.carousel.height + 'px') : 0;
-    //END OF DOM ACCESS
-  }
-  /**
-   *
-   * @param {number} on 1 = add style 0 = remove style
-   */
-  set updateStyle(on = 0) {
-    //add or remove transition duration to container
-    if (on) {
-      this.shadow.container.style.transitionDuration = this.virtual.duration + 'ms';
-      this.shadow.container.style.transitionTimingFunction = 'cubic-bezier(0.215, 0.61, 0.355, 1)';
-    } else {
-      this.shadow.container.style.transitionDuration = '0ms';
-      this.shadow.container.style.transitionTimingFunction = 'linear';
-    }
-  }
-}
+  return Aure;
+}(HoloCli);
 
 /** @format */
-//@ts-check
+
 /**
 
      H.O.L.O -  essential functions
@@ -172,7 +230,9 @@ class Aure extends HoloCli {
 /**
  * @param{object} _holo holo database object
  */
-const _holo = {}; //main instance
+
+var _holo = {}; //main instance
+
 /**
  *
  * @param {string} id holo[id]
@@ -180,56 +240,186 @@ const _holo = {}; //main instance
  * @param {number} y
  * @param {number} z
  */
-const _transform = (id, x = 0, y = 0, z = 0) => {
-  _holo[id].shadow.container.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
-};
 
 /**
  *
  * @param {number} parent parent width
  * @param {number} item child width
  */
-const _snap = (parent, item) => {
-  return Math.round(parent / item) * item
+
+var _snap = function _snap(parent, item) {
+  return Math.round(parent / item) * item;
 };
 
-const _isClicked = timeElapsed => {
-  return timeElapsed < 250 ? 1 : 0 ///handle click, touch, double click or long-touch events
+var _isClicked = function _isClicked(timeElapsed) {
+  return timeElapsed < 250 ? 1 : 0; ///handle click, touch, double click or long-touch events
 };
-
 /**
  *
  * @param {number} distance
  * @param {number} timeElapsed
  */
-const _swipe = (distance, timeElapsed) => {
-  return distance / timeElapsed
+
+
+var _swipe = function _swipe(distance, timeElapsed) {
+  return distance / timeElapsed;
 };
 
-//pure function
-const _getItemWidthHeight = e => {
-  if (!e) return 0
-  const outer = {};
+
+var _getItemWidthHeight = function _getItemWidthHeight(e) {
+  if (!e) return 0;
+  var outer = {};
   outer.width = e.offsetWidth;
   outer.height = e.offsetHeight;
-  const style = window.getComputedStyle(e, null);
+  var style = window.getComputedStyle(e, null);
   outer.width += parseInt(style.marginLeft) + parseInt(style.marginRight);
   outer.height += parseInt(style.marginTop) + parseInt(style.marginBottom);
-  return outer
+  return outer;
+};
+
+
+var activate = function activate(_ref) {
+  var element = _ref[0],
+      virtual = _ref[1];
+  virtual.transformX = -Math.abs(element.offsetLeft);
+  cyre.call('SNAP' + virtual.id, virtual);
+  element.classList.add('active');
+}; //previous slide operator
+
+
+var prvSlide = function prvSlide(virtual) {
+  if (virtual.endOfSlide === 1) return; //console.error('shake');
+
+  virtual.transformX += virtual.carousel.width || 0;
+  virtual.transformY += virtual.carousel.height || 0;
+  return cyre.call('SNAP' + virtual.id, virtual);
+}; //next slide operator
+
+
+var nxtSlide = function nxtSlide(virtual) {
+  if (virtual.endOfSlide === -1) return; //console.error('shake');
+
+  virtual.transformX -= virtual.carousel.width || 0;
+  virtual.transformY -= virtual.carousel.height || 0;
+  return cyre.call('SNAP' + virtual.id, virtual);
+}; //jump to first slide operator
+
+
+var firstSlide = function firstSlide(virtual) {
+  virtual.transformX = 0;
+  virtual.transformY = 0;
+  virtual.endOfSlide = 1;
+  return cyre.call('SNAP' + virtual.id, virtual);
+}; //jump to last slide operator
+
+
+var lastSlide = function lastSlide(virtual) {
+  virtual.transformX = virtual.endOfSlidePosition;
+  virtual.transformY = virtual.endOfSlidePosition;
+  virtual.endOfSlide = -1;
+  return cyre.call('SNAP' + virtual.id, virtual);
+}; //animate slides
+
+
+var animateSlideForward = function animateSlideForward(virtual) {
+  console.log('animating', virtual);
+
+  if (virtual.endOfSlide === -1) {
+    return cyre.call('firstSlide' + virtual.id, virtual);
+  }
+
+  return cyre.call('nxtSlide' + virtual.id, virtual);
+};
+
+var animateSlideBackward = function animateSlideBackward(virtual) {
+  if (virtual.endOfSlide === 1) {
+    return cyre.call('lastSlide' + virtual.id, virtual);
+  }
+
+  return cyre.call('prvSlide' + virtual.id, virtual);
+}; //mouse 3rd button 'wheel' controller
+
+
+var wheeler = function wheeler(e, id) {
+  e.preventDefault();
+  var virtual = _holo[id].getVirtual;
+
+  if (e.deltaY < 0) {
+    cyre.call('prvSlide' + virtual.id, virtual);
+  } else if (e.deltaY > 0) {
+    cyre.call('nxtSlide' + virtual.id, virtual);
+  }
+};
+
+/** @format */
+/**
+ *
+ * @param {object} virtual
+ */
+
+var _transformX = function _transformX(virtual) {
+  virtual.transformX = virtual.io.snap ? _snap(virtual.transformX, virtual.item.width) : virtual.transformX;
+  virtual.transformY = 0;
+
+  if (virtual.transformX >= 0) {
+    virtual.transformX = 0;
+    virtual.endOfSlide = 1; //Left EnD of the carousel
+  } else if (virtual.transformX <= virtual.endOfSlidePosition) {
+    virtual.transformX = virtual.endOfSlidePosition;
+    virtual.endOfSlide = -1; //Right end of the carousel
+  } else {
+    virtual.endOfSlide = 0; //in the middle carousel
+  }
+
+  return virtual;
+};
+var _transformXLite = function _transformXLite(virtual) {
+  virtual.transformY = 0;
+
+  if (virtual.transformX >= 0) {
+    virtual.transformX = 0;
+  } else if (virtual.transformX <= virtual.endOfSlidePosition) {
+    virtual.transformX = virtual.endOfSlidePosition;
+  }
+
+  return virtual;
+};
+/**
+ *
+ * @param {object} virtual
+ */
+
+var _transformY = function _transformY(virtual) {
+  virtual.transformY = virtual.io.snap ? _snap(virtual.transformY, virtual.item.height) : virtual.transformY;
+  virtual.transformX = 0;
+
+  if (virtual.transformY >= 0) {
+    virtual.transformY = 0;
+    virtual.endOfSlide = 1; //Left EnD of the carousel
+  } else if (virtual.transformY <= virtual.endOfSlidePosition) {
+    virtual.transformY = virtual.endOfSlidePosition;
+    virtual.endOfSlide = -1; //Right end of the carousel
+  } else {
+    virtual.endOfSlide = 0; //in the middle carousel
+  }
+
+  return virtual;
 };
 
 /** @format */
 
-class TouchClass {
+var TouchClass =
+/*#__PURE__*/
+function () {
   /*
-
-     H.O.L.O TOUCH EVENTS HANDLER
-
-    */
-  constructor() {
+       H.O.L.O TOUCH EVENTS HANDLER
+      */
+  function TouchClass() {
     this.positionX = 0;
     this.positionY = 0;
     this.pressed = 0;
+    this.virtual = {};
+    this.multiplier = 1.482;
     this.touch = {
       start: 'mousedown',
       move: 'mousemove',
@@ -237,249 +427,171 @@ class TouchClass {
       enter: 'mouseenter'
     };
     this.targetHoloComponent = 0;
-  }
+  } //register if touch/click has occurred
 
-  //register if touch/click has occured
-  _touchStart(e = window.event, id = 0) {
-    if (!id || this.pressed) {
-      return console.error('Holo touch : not my business')
+
+  var _proto = TouchClass.prototype;
+
+  _proto._touchStart = function _touchStart(e, id) {
+    if (e === void 0) {
+      e = window.event;
     }
+
+    if (id === void 0) {
+      id = 0;
+    }
+
+    if (!id || this.pressed) return console.error('Holo touch : not my business');
     this.TouchStartTimeStamp = performance.now(); //snap timer on touch start
-    e.preventDefault(); //reset default
+    //reset default
+
     this.virtual = _holo[id].getVirtual;
     this.pressed = 1;
-    // this.targetHoloComponent = e.target
     this.positionX = e.clientX || e.touches[0].clientX;
     this.positionY = e.clientY || e.touches[0].clientY;
     this.id = this.virtual.id;
     this.currentX = e.clientX || e.touches[0].clientX;
     this.currentY = e.clientY || e.touches[0].clientY;
-    this.snapWidth = this.virtual.transformX || 0;
-    this.snapHeight = this.virtual.transformY || 0;
-    return (
-      this.virtual.io.orientation === true ? this._dragScrollVertical(e) : this._dragScroll(e),
-      (_holo[this.virtual.id].updateStyle = 0)
-    ) //look into this
+    this.snapShotWidth = this.virtual.transformX || 0;
+    this.snapShotHeight = this.virtual.transformY || 0;
+    return this.virtual.io.orientation ? (this._dragScrollVertical(e), e.preventDefault()) : (this._dragScrollHorizontal(e), e.preventDefault()), _holo[this.id].updateStyle = 0; //look into this
   }
   /*
-         @dragScroll : handles drag touch moves
-    */
-  _dragScroll(e) {
-    if (!this.pressed) return {ok: false, data: 'not active'}
+         @dragScroll : handles horizontal drag touch moves
+  */
+  ;
+
+  _proto._dragScrollHorizontal = function _dragScrollHorizontal(e) {
+    if (!this.pressed) return {
+      ok: false,
+      data: 'not active'
+    };
     this.distance = this.positionX - this.currentX;
-    this.virtual.transformX = this.snapWidth - this.distance * 1.482 || 0;
-    if (this.virtual.transformX >= 100) {
-      this.virtual.transformX = 100;
-      this.virtual.endOfSlide = 1; //Left EnD of the carousel
-    } else if (this.virtual.transformX + 100 <= this.virtual.endNumber) {
-      this.virtual.transformX = this.virtual.endNumber - 100;
-      this.virtual.endOfSlide = -1; //Right end of the carousel
-    } else {
-      this.virtual.endOfSlide = 0; //in the middle carousel
-    }
-    _transform(this.id, this.virtual.transformX, 0, 0);
-    requestAnimationFrame(this._dragScroll.bind(this));
-  }
+    this.virtual.transformX = this.snapShotWidth - this.distance * this.multiplier || 0;
+    _holo[this.id].setState = _transformXLite(this.virtual);
+    requestAnimationFrame(this._dragScrollHorizontal.bind(this));
+  } //@dragScroll : handles vertical drag touch moves
+  ;
 
-  //@dragScroll : handles vertical drag touch moves
-  _dragScrollVertical(e) {
-    if (!this.pressed) return 0
+  _proto._dragScrollVertical = function _dragScrollVertical(e) {
+    if (!this.pressed) return {
+      ok: false,
+      data: 'not active'
+    };
     this.distance = this.positionY - this.currentY;
-    this.virtual.transformY = this.snapHeight - this.distance * 1.482 || 0;
-    _transform(this.virtual.id, 0, this.virtual.transformY, 0);
+    this.virtual.transformY = this.snapShotHeight - this.distance * this.multiplier || 0;
+    _holo[this.id].setState = _extends({}, _transformY(this.virtual));
     requestAnimationFrame(this._dragScrollVertical.bind(this));
-  }
+  } //Register event/mouse position when touch/drag ends
+  ;
 
-  //Register event/mouse position when touch/drag ends
-  _touchEnd(e) {
-    const touchEndTimeStamp = performance.now();
+  _proto._touchEnd = function _touchEnd(e) {
+    if (!this.pressed) return {
+      ok: false,
+      data: 'not active'
+    };
+    var touchEndTimeStamp = performance.now();
     e.preventDefault();
-    if (!this.pressed) return 0
     this.pressed = 0; //reset after drag event ended
-    const timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp;
-    const speed = _swipe(this.distance, timeElapsed);
+
+    var timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp;
+
+    var speed = _swipe(this.distance, timeElapsed);
 
     if (speed > 1.2) {
-      cyre.emit('nxtSlide' + this.virtual.id, this.virtual);
+      cyre.call('nxtSlide' + this.id, this.virtual);
     } else if (speed < -1.2) {
-      cyre.emit('prvSlide' + this.virtual.id, this.virtual);
+      cyre.call('prvSlide' + this.id, this.virtual);
     } else if (_isClicked(timeElapsed)) {
       this.focus(e);
+    } else {
+      return cyre.call('SNAP' + this.id, this.virtual);
     }
-    return cyre.emit('SNAP' + this.virtual.id, this.virtual)
-  }
+  } //highlight active/ selected slide
+  ;
 
-  //highlight active/ selected slide
-  focus(e) {
-    //bring selected element to view
-    if (!e.target.closest('li.holo')) return false
+  _proto.focus = function focus(e) {
+    if (!e.target.closest('li.holo')) return false;
     this.targetHoloComponent ? this.targetHoloComponent.classList.remove('active') : false;
     this.targetHoloComponent = e.target.closest('li.holo');
-    try {
-      PROTVJS.PLAY_THIS(this.targetHoloComponent.id);
-    } catch (f) {
-      //console.log('@playthis not found : ', this.targetHoloComponent.id);
-    }
-    return cyre.emit('activate' + this.virtual.id, [this.targetHoloComponent, this.virtual])
-  }
+    return cyre.call('activate' + this.id, [this.targetHoloComponent, this.virtual]);
+  };
 
-  //manage active/highlighted slides
-  activate([element, virtual]) {
-    virtual.transformX = -Math.abs(element.offsetLeft);
-    cyre.emit('SNAP' + virtual.id, virtual);
-    element.classList.add('active');
-  }
+  return TouchClass;
+}();
 
-  //previous slide operator
-  prvSlide(virtual) {
-    if (virtual.endOfSlide === 1) return //console.error('shake');
-    virtual.transformX += virtual.carousel.width || 0;
-    virtual.transformY += virtual.carousel.height || 0;
-    return cyre.emit('SNAP' + virtual.id, virtual)
-  }
-
-  //next slide operator
-  nxtSlide(virtual) {
-    if (virtual.endOfSlide === -1) return //console.error('shake');
-    virtual.transformX -= virtual.carousel.width || 0;
-    virtual.transformY -= virtual.carousel.height || 0;
-    return cyre.emit('SNAP' + virtual.id, virtual)
-  }
-
-  //jump to first slide operator
-  firstSlide(virtual) {
-    virtual.transformX = 0;
-    virtual.transformY = 0;
-    virtual.endOfSlide = 1;
-    return cyre.emit('SNAP' + virtual.id, virtual)
-  }
-
-  //jump to last slide operator
-  lastSlide(virtual) {
-    virtual.transformX = virtual.endNumber;
-    virtual.transformY = virtual.endNumber;
-    virtual.endOfSlide = -1;
-    return cyre.emit('SNAP' + virtual.id, virtual)
-  }
-
-  //animate slides
-  animateSlideForward(virtual) {
-    console.log('animating', virtual);
-    if (virtual.endOfSlide === -1) {
-      return cyre.emit('firstSlide' + virtual.id, virtual)
-    }
-    return cyre.emit('nxtSlide' + virtual.id, virtual)
-  }
-
-  animateSlideBackward(virtual) {
-    if (virtual.endOfSlide === 1) {
-      return cyre.emit('lastSlide' + virtual.id, virtual)
-    }
-    return cyre.emit('prvSlide' + virtual.id, virtual)
-  }
-
-  //mouse 3rd button 'wheel' controller
-  wheeler(e, id) {
-    e.preventDefault();
-    const virtual = _holo[id].getVirtual;
-    if (e.deltaY < 0) {
-      cyre.emit('prvSlide' + virtual.id, virtual);
-    } else if (e.deltaY > 0) {
-      cyre.emit('nxtSlide' + virtual.id, virtual);
-    }
-  }
-}
-const Touch = new TouchClass();
+var Touch = new TouchClass();
 
 /** @format */
-
 /**
  *
  * @param {object} virtual  holo[id].virtual
  * @param {object} shadow  holo[id].shadow
  */
 
-const ManageIO = (virtual, shadow) => {
-  if (!virtual) return console.error('@Holo : Major malfunctions')
-  cyre.action({
+var ManageIO = function ManageIO(virtual, shadow) {
+  if (!virtual) return console.error('@Holo : Major malfunctions');
+  cyre.action([{
     id: 'Animate' + virtual.id,
     type: virtual.io.animateDirection > 0 ? 'AnimateForward' : 'AnimateBackward',
     payload: virtual,
     interval: virtual.io.duration,
     repeat: virtual.io.loop,
     log: true
-  });
-
-  cyre.action({
+  }, {
     id: 'SNAP' + virtual.id,
     type: 'SNAP',
     payload: virtual
-  });
-
-  cyre.action({
+  }, {
     id: 'prvSlide' + virtual.id,
     type: 'prvSlide',
     payload: virtual
-  });
-
-  cyre.action({
+  }, {
     id: 'nxtSlide' + virtual.id,
     type: 'nxtSlide',
     payload: virtual
-  });
-
-  cyre.action({
+  }, {
     id: 'lastSlide' + virtual.id,
     type: 'lastSlide',
     payload: virtual
-  });
-
-  cyre.action({
+  }, {
     id: 'firstSlide' + virtual.id,
     type: 'firstSlide',
     payload: virtual
-  });
-
-  cyre.action({
+  }, {
     id: 'activate' + virtual.id,
     type: 'activate',
     payload: virtual
-  });
+  }]);
 
   if (virtual.io.enabled) {
-    virtual.io.drag
-      ? shadow.container.addEventListener('mousedown', e => {
-          e.preventDefault();
-          Touch._touchStart(e, virtual.id);
-        })
-      : false;
+    virtual.io.drag ? shadow.container.addEventListener('mousedown', function (e) {
+      e.preventDefault();
 
-    virtual.io.drag
-      ? shadow.container.addEventListener('touchstart', e => {
-          e.preventDefault();
-          Touch._touchStart(e, virtual.id);
-        })
-      : false;
+      Touch._touchStart(e, virtual.id);
+    }) : false;
+    virtual.io.drag ? shadow.container.addEventListener('touchstart', function (e) {
+      e.preventDefault();
 
-    virtual.io.wheel
-      ? shadow.carousel.addEventListener('wheel', e => {
-          Touch.wheeler(e, virtual.id);
-        })
-      : false;
-
+      Touch._touchStart(e, virtual.id);
+    }) : false;
+    virtual.io.wheel ? shadow.carousel.addEventListener('wheel', function (e) {
+      wheeler(e, virtual.id);
+    }) : false;
     virtual.io.animate ? cyre.call('Animate' + virtual.id, virtual) : false;
-
-    shadow.container.addEventListener(
-      //when window resizes do something
-      'resize',
-      () => {
-        cyre.call('refresh carousel', {virtual, shadow});
-      },
-      false
-    );
+    shadow.container.addEventListener( //when window resizes do something
+    'resize', function () {
+      cyre.call('refresh carousel', {
+        virtual: virtual,
+        shadow: shadow
+      });
+    }, false);
   }
 
-  cyre.call('refresh carousel', {virtual, shadow});
+  cyre.call('refresh carousel', {
+    virtual: virtual,
+    shadow: shadow
+  });
 };
 
 /** @format */
@@ -487,7 +599,8 @@ const ManageIO = (virtual, shadow) => {
 @param{object} slide single element of halo
 @param{object} io holo input output parameters/options
 */
-const holoCreateElement = (slide, io) => {
+
+var holoCreateElement = function holoCreateElement(slide, io) {
   _holo[slide.id] = new Aure(slide, io); //register found carousels
 
   ManageIO(_holo[slide.id].getVirtual, _holo[slide.id].getShadow);
@@ -495,147 +608,130 @@ const holoCreateElement = (slide, io) => {
 
 /** @format */
 
-//holo Locate all holo carousel structures ByClassName
 /**
  * @param{string} carouselName get all carousels by this class name
  */
-const holoInitiate = carouselName => {
-  const carousels = document.getElementsByClassName(carouselName);
+
+var holoInitiate = function holoInitiate(carouselName) {
+  console.log('@holo holo auto activated :', carouselName);
+  var carousels = document.getElementsByClassName(carouselName);
+
   if (carousels.length) {
-    for (let slide of carousels) {
-      //for each carousel found
+    for (var _iterator = carousels, _isArray = Array.isArray(_iterator), _i = 0, _iterator = _isArray ? _iterator : _iterator[Symbol.iterator]();;) {
+      var _ref;
+
+      if (_isArray) {
+        if (_i >= _iterator.length) break;
+        _ref = _iterator[_i++];
+      } else {
+        _i = _iterator.next();
+        if (_i.done) break;
+        _ref = _i.value;
+      }
+
+      var slide = _ref;
       holoCreateElement(slide, {});
     }
   } else {
-    return console.log('@Holo : carousel structure not found')
+    return console.log('@Holo : carousel structure not found');
   }
 };
 
 /** @format */
-/**
- *
- * @param {object} virtual
- */
-const _transformX = virtual => {
-  virtual.transformX = (virtual.io.snap && _snap(virtual.transformX, virtual.item.width)) || virtual.transformX;
-  virtual.transformY = 0;
-  if (virtual.transformX >= 0) {
-    virtual.transformX = 0;
-    virtual.endOfSlide = 1; //Left EnD of the carousel
-  } else if (virtual.transformX <= virtual.endNumber) {
-    virtual.transformX = virtual.endNumber;
-    virtual.endOfSlide = -1; //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0; //in the middle carousel
-  }
-  return virtual
-};
-/**
- *
- * @param {object} virtual
- */
-const _transformY = virtual => {
-  virtual.transformY = (virtual.io.snap && _snap(virtual.transformY, virtual.item.height)) || virtual.transformY;
-  virtual.transformX = 0;
-  if (virtual.transformY >= 0) {
-    virtual.transformY = 0;
-    virtual.endOfSlide = 1; //Left EnD of the carousel
-  } else if (virtual.transformY <= virtual.endNumber) {
-    virtual.transformY = virtual.endNumber;
-    virtual.endOfSlide = -1; //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0; //in the middle carousel
-  }
-  return virtual
-};
 
-/** @format */
-
-const TouchManager = au => {
-  document.addEventListener('mousemove', e => {
+var TouchManager = function TouchManager() {
+  document.addEventListener('mousemove', function (e) {
     if (Touch.pressed) {
       Touch.currentX = e.clientX;
       Touch.currentY = e.clientY;
     }
   });
-
-  document.addEventListener('mouseup', e => {
+  document.addEventListener('mouseup', function (e) {
     e.preventDefault();
     Touch.pressed ? Touch._touchEnd(e) : false;
   });
-
-  document.addEventListener('touchmove', e => {
+  document.addEventListener('touchmove', function (e) {
     if (Touch.pressed) {
       Touch.currentX = e.touches[0].clientX;
       Touch.currentY = e.touches[0].clientY;
     }
   });
-
-  document.addEventListener('touchend', e => {
+  document.addEventListener('touchend', function (e) {
     Touch.pressed ? Touch._touchEnd(e) : false;
   });
-
-  cyre.on('AnimateForward', Touch.animateSlideForward);
-  cyre.on('AnimateBackward', Touch.animateSlideBackward);
-  cyre.on('nxtSlide', Touch.nxtSlide);
-  cyre.on('prvSlide', Touch.prvSlide);
-  cyre.on('firstSlide', Touch.firstSlide);
-  cyre.on('lastSlide', Touch.lastSlide);
+  cyre.on('AnimateForward', animateSlideForward);
+  cyre.on('AnimateBackward', animateSlideBackward);
+  cyre.on('nxtSlide', nxtSlide);
+  cyre.on('prvSlide', prvSlide);
+  cyre.on('firstSlide', firstSlide);
+  cyre.on('lastSlide', lastSlide);
   cyre.on('bringToFocus', Touch.focus);
-  cyre.on('wheeler', Touch.wheeler);
-  cyre.on('activate', Touch.activate);
+  cyre.on('wheeler', wheeler);
+  cyre.on('activate', activate);
+  return true;
 };
 
 /** @format */
 
-const Holo = (() => {
-  cyre.on('refresh carousel', state => {
-    const {virtual, shadow} = state;
-    if (!virtual.id) return console.error('Holo carousel refresh error ', virtual.id)
+var Holo = function () {
+  cyre.on('refresh carousel', function (state) {
+    var virtual = state.virtual,
+        shadow = state.shadow;
+    if (!virtual.id) return console.error('Holo carousel refresh error ', virtual.id);
     shadow.container.setAttribute('style', '');
-    const {height, width} = _getItemWidthHeight(shadow.container.children[0]);
+
+    var _getItemWidthHeight2 = _getItemWidthHeight(shadow.container.children[0]),
+        height = _getItemWidthHeight2.height,
+        width = _getItemWidthHeight2.width;
+
     virtual.item.height = height;
     virtual.item.width = width;
-    virtual.numberOfSlots =
-      _numberOfSlots(shadow.carousel.parentNode.clientWidth, virtual.item.width, virtual.item.max) || 1;
-    const calcCarouselWidth = virtual.numberOfSlots * virtual.item.width;
-    const innerCarouselWidth = shadow.carousel.clientWidth;
-    const calcWidth = shadow.container.children.length * virtual.item.width;
-    const innerWidth = shadow.container.clientWidth || calcWidth;
+    virtual.numberOfSlots = _numberOfSlots(shadow.carousel.parentNode.clientWidth, virtual.item.width, virtual.item.max) || 1;
+    var calcCarouselWidth = virtual.numberOfSlots * virtual.item.width;
+    var innerCarouselWidth = shadow.carousel.clientWidth;
+    var calcWidth = shadow.container.children.length * virtual.item.width;
+    var innerWidth = shadow.container.clientWidth || calcWidth;
     virtual.carousel.width = calcCarouselWidth || innerCarouselWidth;
     virtual.carousel.height = virtual.item.height || shadow.carousel.clientHeight;
     virtual.container.width = virtual.io.orientation ? shadow.carousel.width : innerWidth;
     virtual.container.height = shadow.container.clientHeight || virtual.item.height || 0;
-    virtual.endNumber = virtual.io.orientation
-      ? -Math.abs(virtual.container.height - virtual.carousel.height)
-      : -Math.abs(virtual.container.width - virtual.carousel.width);
-    return (_holo[virtual.id].setState = virtual), cyre.call('snap to position', virtual)
-  });
+    virtual.endOfSlidePosition = virtual.io.orientation ? -Math.abs(virtual.container.height - virtual.carousel.height) : -Math.abs(virtual.container.width - virtual.carousel.width);
+    return _holo[virtual.id].setDimension = _extends({}, virtual), cyre.call('snap to position', virtual);
+  }); //snap to grid
+  //manages container
 
-  //snap to grid
-  cyre.on('SNAP', virtual => {
-    //manages container
+  cyre.on('SNAP', function (virtual) {
+    if (!virtual.id) return console.error('Holo snap error');
     _holo[virtual.id].updateStyle = 1;
-    if (!virtual.id) return console.error('Holo snap error')
     virtual = virtual.io.orientation ? _transformY(virtual) : _transformX(virtual);
-    _holo[virtual.id].setState = virtual;
-    return _transform(virtual.id, virtual.transformX, virtual.transformY)
+    return _holo[virtual.id].setState = _extends({}, virtual);
   });
 
-  const _carousel = (id, io = {}) => {
-    //_holo[id]?
-    const virtual = _holo[id].virtual;
-    for (const attribute in io) {
-      virtual.io[attribute] ? (virtual.io[attribute] = io[attribute]) : false;
+  var _carousel = function _carousel(id, io) {
+    if (io === void 0) {
+      io = {};
     }
-    return {ok: true, data: virtual.io}
+
+    //_holo[id]?
+    var virtual = _holo[id].virtual;
+
+    for (var attribute in io) {
+      virtual.io[attribute] ? virtual.io[attribute] = io[attribute] : false;
+    }
+
+    return {
+      ok: true,
+      data: virtual.io
+    };
   };
   /**
    *
    * @param {string} id
    */
-  const getDimensions = id => {
-    return _holo[id].getDimensions
+
+
+  var getDimensions = function getDimensions(id) {
+    return _holo[id].getDimensions;
   };
   /**
    *
@@ -643,76 +739,88 @@ const Holo = (() => {
    * @param {number} item
    * @param {number} max
    */
-  const _numberOfSlots = (parent, item, max) => {
-    let slots = Math.floor(parent / item);
+
+
+  var _numberOfSlots = function _numberOfSlots(parent, item, max) {
+    var slots = Math.floor(parent / item);
+
     if (max) {
       if (slots > max) {
-        slots = max;
+        return max || 1;
       }
     }
-    return slots || 1
-  };
 
+    return slots || 1;
+  };
   /**
    *
    * @param {object} _e
    */
-  const _addShake = _e => {
+
+
+  var _addShake = function _addShake(_e) {
     /*     _e.elm.container.classList.add('shake-off')
     let shake = setTimeout(() => {
       clearTimeout(shake)
       _e.elm.container.classList.remove('shake-off')
       return 0
     }, 1000) */
-
     console.log('shaking');
   };
-
   /**
    *
    * @param {string} au
    */
-  const init = (au = 'holo-carousel') => {
-    console.log('%c HOLO - Initiating holo v2.2 ', 'background: #022d5f; color: white; display: block;');
-    TouchManager(au);
-    //listen for events
-    cyre.action({id: 'refresh screen', interval: 250}); //adjust width
-    cyre.action({id: 'refresh carousel', interval: 250});
-    cyre.action({id: 'snap to position', type: 'SNAP'});
-    cyre.on('SHAKE', _addShake);
+
+
+  var init = function init(au) {
+
+    console.log('%c HOLO - Initiating holo v2.3.4 ', 'background: #022d5f; color: white; display: block;');
+    TouchManager(); //init microService
+
+    cyre.action([{
+      id: 'refresh screen',
+      interval: 250
+    }, //adjust width
+    {
+      id: 'refresh carousel',
+      interval: 250
+    }, {
+      id: 'snap to position',
+      type: 'SNAP'
+    }]);
+    cyre.on('SHAKE', _addShake); //setup screen on initiation
+
     cyre.on('refresh screen', _refresh);
-  };
+  }; //when dom loads do something
 
-  document.addEventListener('DOMContentLoaded', () => {}, false); //when dom loads do something
 
-  const _refresh = () => {
-    for (let id in _holo) {
+  document.addEventListener('DOMContentLoaded', function () {}, false);
+
+  var _refresh = function _refresh() {
+    for (var id in _holo) {
+      console.log('@holo refreshing : ', id);
       cyre.call('refresh carousel', _holo[id].getState);
     }
-  };
+  }; //when window resizes do something
 
-  window.addEventListener(
-    //when window resizes do something
-    'resize',
-    () => {
-      cyre.call('refresh screen');
-    },
-    false
-  );
 
-  window.onload = () => {
-    cyre.dispatch({id: 'app loaded', type: 'LOADED'});
+  window.addEventListener('resize', function () {
+    cyre.call('refresh screen');
+  }, false); //when window loads do something
+
+  window.onload = function () {// cyre.dispatch({id: 'app loaded', type: 'LOADED'})
   };
 
   return {
     TOUCH: Touch,
     INIT: init,
-    dimensions: getDimensions,
     BUILD: holoCreateElement,
     AUTO: holoInitiate,
     carousel: _carousel,
-    refresh: _refresh
-  }
-})();
+    refresh: _refresh,
+    dimensions: getDimensions
+  };
+}();
 
 export default Holo;
