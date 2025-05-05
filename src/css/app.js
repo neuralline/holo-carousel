@@ -17,7 +17,7 @@
 
 //HOLO self invoking function
 
-import {cyre} from 'cyre'
+import cyre from 'cyre'
 import holoCreateElement from './components/holo-create-element'
 import {_holo, _getItemWidthHeight} from './components/holo-essentials'
 import holoInitiate from './components/holo-initiate'
@@ -27,6 +27,7 @@ import {TouchManager} from './components/touch-manager'
 
 const Holo = (() => {
   cyre.on('refresh carousel', state => {
+    console.log('refresh carousel ::::::::::')
     const {virtual, shadow} = state
     if (!virtual.id) return console.error('Holo carousel refresh error ', virtual.id)
     shadow.container.setAttribute('style', '')

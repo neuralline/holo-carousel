@@ -2,7 +2,7 @@
 typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('cyre')) :
 typeof define === 'function' && define.amd ? define(['cyre'], factory) :
 (global = global || self, global.Holo = factory(global.cyre));
-}(this, function (cyre) { 'use strict';
+}(this, (function (cyre) { 'use strict';
 
 /**
  *  default entries
@@ -672,8 +672,8 @@ const Holo = (() => {
     TouchManager();
     //init microService
     cyre.cyre.action([
-      {id: 'refresh screen', interval: 250}, //adjust width
-      {id: 'refresh carousel', interval: 250},
+      {id: 'refresh screen', log:true}, //adjust width
+      {id: 'refresh carousel'},
       {id: 'snap to position', type: 'SNAP'}
     ]);
     cyre.cyre.on('SHAKE', _addShake);
@@ -706,6 +706,9 @@ const Holo = (() => {
     // cyre.dispatch({id: 'app loaded', type: 'LOADED'})
   };
 
+
+
+  
   return {
     TOUCH: Touch,
     INIT: init,
@@ -719,4 +722,4 @@ const Holo = (() => {
 
 return Holo;
 
-}));
+})));

@@ -1,7 +1,9 @@
 /** @format */
+
+//src/components/
 //@ts-check
 
-import {cyre} from 'cyre'
+import cyre from 'cyre'
 import {
   activate,
   animateSlideBackward,

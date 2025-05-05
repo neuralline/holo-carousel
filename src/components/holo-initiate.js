@@ -1,5 +1,6 @@
 /** @format */
-//@ts-check
+
+//src/components/
 
 import holoCreateElement from './holo-create-element'
 

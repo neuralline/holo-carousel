@@ -1,5 +1,6 @@
 /** @format */
-//@ts-check
+
+//src/components/
 
 import Aure from './core/Aure'
 import {_holo} from './holo-essentials'

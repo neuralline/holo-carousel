@@ -1,6 +1,8 @@
 /** @format */
 
-import {cyre} from 'cyre'
+//src/components/
+
+import cyre from 'cyre'
 //@ts-check
 /**
 

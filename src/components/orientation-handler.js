@@ -1,5 +1,7 @@
 /** @format */
 
+//src/components/
+
 //@ts-check
 
 import {_snap} from './holo-essentials'

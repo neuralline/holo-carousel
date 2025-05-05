@@ -1,5 +1,7 @@
 /** @format */
 
+//src/components/
+
 export const _width = _e => {
   //manages carousel(not pure)
   if (!_e.id) {

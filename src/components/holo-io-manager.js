@@ -1,7 +1,5 @@
-/** @format */
-//@ts-check
-
-import {cyre} from 'cyre'
+// src/components/holo-io-manager
+import cyre from 'cyre'
 import Touch from './holo-touch'
 import {wheeler} from './holo-essentials'
 

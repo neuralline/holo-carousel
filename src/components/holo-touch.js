@@ -1,10 +1,12 @@
 /** @format */
 
+//src/components/
+
 'use strict'
 //@ts-check
 // @git NeuralLine
 // @02/01/2019
-import {cyre} from 'cyre'
+import cyre from 'cyre'
 import {_holo, _isClicked, _swipe} from './holo-essentials'
 import {_transformXLite, _transformY} from './orientation-handler'
 class TouchClass {
