@@ -1,0 +1,81 @@
+<!-- @format -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Holo Carousel - Neural Line</title>
+    <meta property="og:type" content="app" />
+    <meta property="og:image" content="img/22.jpg" />
+    <meta name="twitter:site" content="@NeuralLine" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1" />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+
+  <body>
+    <div class="holo-wrapper" id="wrapper">
+      <!-- <carousel class="holo-carousel holo-carousel-style-one " id="au_carousel2" data-sanp='0' data-wheel='0'
+            data-animate='1' data-duration='5000' data-loop='100'>
+            <ul class="holo-container transition" id="au_pack2">
+                <li class="holo transition"><img src="img/25.jpg" /></li>
+                <li class="holo transition"><img src="img/26.jpg" /></li>
+                <li class="holo transition"><img src="img/27.jpg" /></li>
+                <li class="holo transition"><img src="img/28.jpg" /></li>
+                <li class="holo transition"><img src="img/29.jpg" /></li>
+                <li class="holo transition"><img src="img/30.jpg" /></li>
+                <li class="holo transition"><img src="img/31.jpg" /></li>
+                <li class="holo transition"><img src="img/32.jpg" /></li>
+                <li class="holo transition"><img src="img/33.jpg" /></li>
+                <li class="holo transition"><img src="img/34.jpg" /></li>
+            </ul>
+        </carousel> -->
+
+      <carousel
+        class="holo-carousel holo-carousel-style-movie-poster transition"
+        id="au_carousel3"
+        data-duration="2000"
+        data-wheel="0"
+        data-loop="20"
+      >
+        <ul class="holo-container transition">
+          <li class="holo transition"><img src="img/24.jpg" /></li>
+          <li class="holo transition"><img src="img/14.jpg" /></li>
+          <li class="holo transition"><img src="img/17.jpg" /></li>
+          <li class="holo transition"><img src="img/12.jpg" /></li>
+          <li class="holo transition"><img src="img/11.jpg" /></li>
+          <li class="holo transition"><img src="img/10.jpg" /></li>
+          <li class="holo transition"><img src="img/9.jpg" /></li>
+          <li class="holo transition"><img src="img/7.jpg" /></li>
+          <li class="holo transition"><img src="img/6.jpg" /></li>
+          <li class="holo transition"><img src="img/5.jpg" /></li>
+          <li class="holo transition"><img src="img/4.jpg" /></li>
+          <li class="holo transition"><img src="img/3.jpg" /></li>
+          <li class="holo transition"><img src="img/2.jpg" /></li>
+          <li class="holo transition"><img src="img/1.jpg" /></li>
+          <li class="holo transition"><img src="img/14.jpg" /></li>
+          <li class="holo transition"><img src="img/13.jpg" /></li>
+          <li class="holo transition"><img src="img/12.jpg" /></li>
+          <li class="holo transition"><img src="img/11.jpg" /></li>
+          <li class="holo transition"><img src="img/10.jpg" /></li>
+        </ul>
+      </carousel>
+
+      <script src="./holo.es.js"></script>
+      <script>
+        Holo.INIT()
+        Holo.AUTO('holo-carousel')
+        Holo.carousel('au_carousel3', {
+          wheel: false,
+          drag: 0,
+          swipe: 0,
+          snap: 0,
+          focus: 0
+        })
+      </script>
+    </div>
+  </body>
+</html>
