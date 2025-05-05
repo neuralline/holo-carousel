@@ -1,7 +1,7 @@
 {
   "name": "holo-carousel",
   "version": "0.1.3",
-  "description": "Lightweight carousel for javascript and react apps",
+  "description": "Reactive carousel",
   "main": "dist/holo-carousel.cjs.js",
   "module": "dist/holo-carousel.esm.js",
   "browser": "dist/holo-carousel.js",
@@ -11,7 +11,7 @@
     "dev": "vite",
     "start": "serve public"
   },
-  "author": "Darik Hart",
+  "author": "Darik",
   "license": "MIT",
   "homepage": "https://holo-carousel.firebaseapp.com",
   "repository": {

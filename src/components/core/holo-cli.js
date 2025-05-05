@@ -1,8 +1,4 @@
-/**
- *  default entries
- *
- * @format
- */
+//src/components/core
 
 class HoloCli {
   /*

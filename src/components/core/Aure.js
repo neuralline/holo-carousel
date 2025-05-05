@@ -1,7 +1,4 @@
-/** @format */
-
-'use strict'
-//@ts-check
+//src/components/core
 import HoloCli from './holo-cli'
 
 class Aure extends HoloCli {
@@ -18,7 +15,8 @@ class Aure extends HoloCli {
     // console.log('@Aure`  Initializing slider       ---2.0.1');
     this.id = slide.id || 'OhPutain' + performance.now()
     this.shadow.carousel = slide
-    this.shadow.container = this.shadow.carousel.getElementsByClassName('holo-container')[0] || 0
+    this.shadow.container =
+      this.shadow.carousel.getElementsByClassName('holo-container')[0] || 0
     this.shadow.container
       ? this.initializeHolo()
       : console.error('@Holo : Oh Putain` holo-container not found : ', this.id)
@@ -28,7 +26,10 @@ class Aure extends HoloCli {
     this.shadow.carousel.width = this.shadow.carousel.clientWidth || 0 //initializeHolo
     if (!this.shadow.container.children.length) {
       this.virtual.noOfChildren = 0
-      return console.error('@Holo: Oh Putain`  holo-container is empty  : ', this.id)
+      return console.error(
+        '@Holo: Oh Putain`  holo-container is empty  : ',
+        this.id
+      )
     }
     this.virtual.id = this.id
     this.virtual.noOfChildren = this.shadow.container.children.length
@@ -71,17 +72,20 @@ class Aure extends HoloCli {
   set setState(virtual) {
     if (!virtual) return false
     this.virtual = {...this.virtual, ...virtual}
-    this.shadow.container.style.transform = `translate3d(${this.virtual.transformX}px, ${this.virtual.transformY}px, ${
-      this.virtual.transformZ
-    }px)`
+    this.shadow.container.style.transform = `translate3d(${this.virtual.transformX}px, ${this.virtual.transformY}px, ${this.virtual.transformZ}px)`
     //END OF DOM ACCESS
   }
   //update _state object
   set setDimension(virtual) {
     if (!virtual) return false
     this.virtual = {...this.virtual, ...virtual, ...virtual.io}
-    this.virtual.io.orientation ? 0 : (this.shadow.carousel.style.width = this.virtual.carousel.width + 'px')
-    this.virtual.io.orientation ? (this.shadow.carousel.style.height = this.virtual.carousel.height + 'px') : 0
+    this.virtual.io.orientation
+      ? 0
+      : (this.shadow.carousel.style.width = this.virtual.carousel.width + 'px')
+    this.virtual.io.orientation
+      ? (this.shadow.carousel.style.height =
+          this.virtual.carousel.height + 'px')
+      : 0
     //END OF DOM ACCESS
   }
   /**
@@ -91,8 +95,10 @@ class Aure extends HoloCli {
   set updateStyle(on = 0) {
     //add or remove transition duration to container
     if (on) {
-      this.shadow.container.style.transitionDuration = this.virtual.duration + 'ms'
-      this.shadow.container.style.transitionTimingFunction = this.virtual.transitionTiming
+      this.shadow.container.style.transitionDuration =
+        this.virtual.duration + 'ms'
+      this.shadow.container.style.transitionTimingFunction =
+        this.virtual.transitionTiming
     } else {
       this.shadow.container.style.transitionDuration = '0ms'
       this.shadow.container.style.transitionTimingFunction = 'linear'
