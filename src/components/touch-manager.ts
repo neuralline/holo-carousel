@@ -1,5 +1,4 @@
-/** @format */
-//@ts-check
+//src/components/touch-manager.ts
 
 import {cyre} from 'cyre'
 import {
@@ -11,33 +10,42 @@ import {
   nxtSlide,
   prvSlide,
   wheeler
-} from './holo-essentials'
+} from '../libs/holo-essentials'
 import Touch from './holo-touch'
 
-const TouchManager = () => {
-  document.addEventListener('mousemove', e => {
+/**
+ * Setup touch and event handlers for the carousel
+ * @param selector - Optional class selector for carousels
+ */
+export const TouchManager = (selector?: string): boolean => {
+  // Mouse move handler
+  document.addEventListener('mousemove', (e: MouseEvent) => {
     if (Touch.pressed) {
       Touch.currentX = e.clientX
       Touch.currentY = e.clientY
     }
   })
 
-  document.addEventListener('mouseup', e => {
+  // Mouse up handler
+  document.addEventListener('mouseup', (e: MouseEvent) => {
     e.preventDefault()
     Touch.pressed ? Touch._touchEnd(e) : false
   })
 
-  document.addEventListener('touchmove', e => {
+  // Touch move handler
+  document.addEventListener('touchmove', (e: TouchEvent) => {
     if (Touch.pressed) {
       Touch.currentX = e.touches[0].clientX
       Touch.currentY = e.touches[0].clientY
     }
   })
 
-  document.addEventListener('touchend', e => {
+  // Touch end handler
+  document.addEventListener('touchend', (e: TouchEvent) => {
     Touch.pressed ? Touch._touchEnd(e) : false
   })
 
+  // Register event handlers with cyre
   cyre.on('AnimateForward', animateSlideForward)
   cyre.on('AnimateBackward', animateSlideBackward)
   cyre.on('nxtSlide', nxtSlide)
@@ -47,6 +55,6 @@ const TouchManager = () => {
   cyre.on('bringToFocus', Touch.focus)
   cyre.on('wheeler', wheeler)
   cyre.on('activate', activate)
+
   return true
 }
-export {TouchManager}

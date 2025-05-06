@@ -1,5 +1,7 @@
 <!-- @format -->
 
+//public/index.html
+
 <!DOCTYPE html>
 <html>
   <head>
@@ -12,7 +14,10 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1"
+    />
     <link rel="stylesheet" href="css/style.css" />
   </head>
 
@@ -34,7 +39,13 @@
             </ul>
         </carousel> -->
 
-      <carousel class="holo-carousel holo-carousel-style-movie-poster transition" id="au_carousel3" data-duration="2000" data-wheel="0" data-loop="20">
+      <carousel
+        class="holo-carousel holo-carousel-style-movie-poster transition"
+        id="au_carousel3"
+        data-duration="2000"
+        data-wheel="0"
+        data-loop="20"
+      >
         <ul class="holo-container transition">
           <li class="holo transition"><img src="img/24.jpg" /></li>
           <li class="holo transition"><img src="img/14.jpg" /></li>
@@ -58,7 +69,7 @@
         </ul>
       </carousel>
 
-      <script src="./js/holo-carousel.js"></script>
+      <script src="../dist/umd/holo.js"></script>
       <script>
         Holo.INIT()
         Holo.AUTO('holo-carousel')
