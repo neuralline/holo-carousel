@@ -1,6 +1,6 @@
 {
   "name": "holo-carousel",
-  "version": "0.2.0",
+  "version": "2.0.0",
   "description": "Reactive carousel",
   "main": "dist/holo-carousel.cjs.js",
   "module": "dist/holo-carousel.esm.js",

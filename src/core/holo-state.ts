@@ -1,6 +1,6 @@
 //src/core/holo-state.ts
 
-import {
+import type {
   HoloVirtual,
   HoloShadow,
   HoloInstance,
@@ -12,7 +12,7 @@ import {
  */
 export const createDefaultVirtual = (id: string = ''): HoloVirtual => {
   return {
-    id: id,
+    id,
     carousel: {},
     container: {},
     io: createDefaultIOOptions(id),
@@ -25,9 +25,15 @@ export const createDefaultVirtual = (id: string = ''): HoloVirtual => {
     transformZ: 0,
     numberOfSlots: 0,
     endOfSlide: 0,
+    endOfSlidePosition: 0,
     item: {
-      max: 8
-    }
+      max: 8,
+      width: 0,
+      height: 0,
+      min: 1
+    },
+    noOfChildren: 0,
+    startNumber: 0
   }
 }
 
@@ -36,7 +42,7 @@ export const createDefaultVirtual = (id: string = ''): HoloVirtual => {
  */
 export const createDefaultIOOptions = (id: string = ''): HoloIOOptions => {
   return {
-    id: id,
+    id,
     enabled: 1,
     wheel: 0,
     controller: 0,
@@ -66,15 +72,19 @@ export const createDefaultShadow = (): HoloShadow => {
 }
 
 /**
- * Create a new Holo instance (functional replacement for Aure class)
+ * Create a new Holo instance
  */
 export const createHoloInstance = (
   slide: HTMLElement,
   io: Partial<HoloIOOptions> = {}
 ): HoloInstance => {
-  const id = slide.id || 'holo-' + performance.now()
+  // Generate a unique ID if none exists
+  const id = slide.id || `holo-${performance.now()}`
 
+  // Create initial virtual state
   const virtual = createDefaultVirtual(id)
+
+  // Create shadow DOM references
   const shadow: HoloShadow = {
     carousel: slide,
     container: slide.getElementsByClassName('holo-container')[0] as HTMLElement
@@ -83,7 +93,7 @@ export const createHoloInstance = (
   // Apply custom IO options
   virtual.io = {...virtual.io, ...io, id}
 
-  // Initialize properties
+  // Initialize properties based on DOM elements
   if (shadow.container) {
     virtual.carousel.width = shadow.carousel.clientWidth || 0
 
@@ -103,11 +113,12 @@ export const createHoloInstance = (
     console.error('@Holo: holo-container not found:', id)
   }
 
-  // Create the interface for the instance
+  // Create the interface for the instance with pure functions
   const instance: HoloInstance = {
     virtual,
     shadow,
 
+    // Getters - Return immutable copies
     get getVirtual(): HoloVirtual {
       return {...this.virtual}
     },
@@ -136,18 +147,24 @@ export const createHoloInstance = (
       }
     },
 
+    // Setters - Update state and DOM with side effects
     set setState(updatedVirtual: HoloVirtual) {
       if (!updatedVirtual) return
 
+      // Update virtual state immutably
       this.virtual = {...this.virtual, ...updatedVirtual}
+
+      // Update DOM with side effect
       this.shadow.container.style.transform = `translate3d(${this.virtual.transformX}px, ${this.virtual.transformY}px, ${this.virtual.transformZ}px)`
     },
 
     set setDimension(updatedVirtual: HoloVirtual) {
       if (!updatedVirtual) return
 
+      // Update virtual state immutably
       this.virtual = {...this.virtual, ...updatedVirtual}
 
+      // Update DOM dimensions with side effect
       if (this.virtual.io.orientation) {
         this.shadow.carousel.style.height = `${this.virtual.carousel.height}px`
       } else {
@@ -156,6 +173,7 @@ export const createHoloInstance = (
     },
 
     set updateStyle(on: number) {
+      // Update transition style
       if (on) {
         this.shadow.container.style.transitionDuration = `${this.virtual.duration}ms`
         this.shadow.container.style.transitionTimingFunction =

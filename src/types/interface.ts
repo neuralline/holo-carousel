@@ -1,5 +1,3 @@
-/** @format */
-
 //src/types/interface.ts
 
 export interface HoloVirtual {
@@ -22,7 +20,7 @@ export interface HoloVirtual {
   transformZ: number
   numberOfSlots: number
   endOfSlide: number
-  endOfSlidePosition?: number
+  endOfSlidePosition: number
   item: {
     max: number
     width?: number
@@ -105,8 +103,12 @@ export interface HoloTouchClass {
   snapShotHeight: number
   distance?: number
   _touchStart: (e: MouseEvent | TouchEvent, id: string) => void
-  _dragScrollHorizontal: (e: MouseEvent | TouchEvent) => void | {ok: boolean; data: string}
-  _dragScrollVertical: (e: MouseEvent | TouchEvent) => void | {ok: boolean; data: string}
+  _dragScrollHorizontal: (
+    e: MouseEvent | TouchEvent
+  ) => void | {ok: boolean; data: string}
+  _dragScrollVertical: (
+    e: MouseEvent | TouchEvent
+  ) => void | {ok: boolean; data: string}
   _touchEnd: (e: MouseEvent | TouchEvent) => void | {ok: boolean; data: string}
   focus: (e: MouseEvent | TouchEvent) => boolean | void
 }

@@ -4,12 +4,14 @@
 
 ```sh
   Neural Line
-  Lightweight carousel for javascript and react apps
+  Reactive & Lightweight carousel
   H.O.L.O - C.A.R.O.U.S.E.L
+  V2 2025
 
 ```
 
-> One manager for intricate of carousels
+> One manager for intricate of carousels.
+> Holo Carousel is a lightweight, reactive carousel built with modern functional TypeScript. The library features a clean, functional approach with a focus on performance and smooth transitions.
 
 [![NPM Version][npm-image]][npm-url]
 [![NPM Version][npm-download]][npm-url]
@@ -19,6 +21,7 @@
 
 ```sh
 npm i holo-carousel
+pnpm add holo-carousel
 yarn add holo-carousel
 ```
 
@@ -54,6 +57,8 @@ Holo.AUTO('holo-carousel')
   - testability
   - reliability
 
+- 2.0.0 TypeScript refactor
+
 ## Meta
 
 Distributed under the MIT license. See `LICENSE` for more information.
@@ -67,7 +72,7 @@ Distributed under the MIT license. See `LICENSE` for more information.
 ```sh
 
 Q0.0U0.0A0.0N0.0T0.0U0.0M0 - I0.0N0.0C0.0E0.0P0.0T0.0I0.0O0.0N0.0S0
-Lightweight carousel for javascript and react apps 2019
+Holo 2015
 
 ```
 

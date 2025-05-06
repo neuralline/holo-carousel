@@ -1,9 +1,9 @@
 //src/components/holo-touch.ts
 
 import {cyre} from 'cyre'
-import {HoloTouchClass, HoloVirtual} from '../types/interface'
-import {_holo, _isClicked, _swipe} from '../libs/holo-essentials'
-import {_transformXLite, _transformY} from './orientation-handler'
+import type {HoloTouchClass, HoloVirtual} from '../types/interface'
+import {_holo, isClickEvent, calculateSwipeSpeed} from '../libs/holo-essentials'
+import {transformXLite, transformY} from './orientation-handler'
 
 /**
  * H.O.L.O - C.A.R.O.U.S.E.L
@@ -11,7 +11,7 @@ import {_transformXLite, _transformY} from './orientation-handler'
  * Create a touch handler (functional approach)
  */
 const createTouchHandler = (): HoloTouchClass => {
-  const touch: HoloTouchClass = {
+  const touchHandler: HoloTouchClass = {
     positionX: 0,
     positionY: 0,
     pressed: 0,
@@ -24,10 +24,13 @@ const createTouchHandler = (): HoloTouchClass => {
       enter: 'mouseenter'
     },
     targetHoloComponent: 0,
+    TouchStartTimeStamp: 0,
+    id: '',
     currentX: 0,
     currentY: 0,
     snapShotWidth: 0,
     snapShotHeight: 0,
+    distance: 0,
 
     /**
      * Register if touch/click has occurred
@@ -40,9 +43,10 @@ const createTouchHandler = (): HoloTouchClass => {
 
       this.TouchStartTimeStamp = performance.now() // Start timer
 
-      // Reset default
+      // Reset and initialize state
       this.virtual = _holo[id].getVirtual
       this.pressed = 1
+      this.id = this.virtual.id
 
       // Get client coordinates from either mouse or touch event
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
@@ -50,13 +54,12 @@ const createTouchHandler = (): HoloTouchClass => {
 
       this.positionX = clientX
       this.positionY = clientY
-      this.id = this.virtual.id
       this.currentX = clientX
       this.currentY = clientY
       this.snapShotWidth = this.virtual.transformX || 0
       this.snapShotHeight = this.virtual.transformY || 0
 
-      // Start drag handling
+      // Start drag handling based on orientation
       if (this.virtual.io.orientation) {
         this._dragScrollVertical(e)
       } else {
@@ -64,7 +67,7 @@ const createTouchHandler = (): HoloTouchClass => {
       }
 
       e.preventDefault()
-      _holo[this.id!].updateStyle = 0
+      _holo[this.id].updateStyle = 0
     },
 
     /**
@@ -76,11 +79,19 @@ const createTouchHandler = (): HoloTouchClass => {
       if (!this.pressed) return {ok: false, data: 'not active'}
 
       this.distance = this.positionX - this.currentX
-      this.virtual.transformX =
-        this.snapShotWidth - this.distance! * this.multiplier || 0
-      _holo[this.id!].setState = _transformXLite(this.virtual)
 
-      requestAnimationFrame(this._dragScrollHorizontal.bind(this))
+      // Update virtual state with new position
+      const updatedVirtual = {
+        ...this.virtual,
+        transformX: this.snapShotWidth - this.distance * this.multiplier || 0
+      }
+
+      // Apply constraints and update state
+      const boundedVirtual = transformXLite(updatedVirtual)
+      _holo[this.id!].setState = boundedVirtual
+      this.virtual = boundedVirtual
+
+      requestAnimationFrame(() => this._dragScrollHorizontal(e))
     },
 
     /**
@@ -92,11 +103,19 @@ const createTouchHandler = (): HoloTouchClass => {
       if (!this.pressed) return {ok: false, data: 'not active'}
 
       this.distance = this.positionY - this.currentY
-      this.virtual.transformY =
-        this.snapShotHeight - this.distance! * this.multiplier || 0
-      _holo[this.id!].setState = {..._transformY(this.virtual)}
 
-      requestAnimationFrame(this._dragScrollVertical.bind(this))
+      // Update virtual state with new position
+      const updatedVirtual = {
+        ...this.virtual,
+        transformY: this.snapShotHeight - this.distance * this.multiplier || 0
+      }
+
+      // Apply constraints and update state
+      const boundedVirtual = transformY(updatedVirtual)
+      _holo[this.id!].setState = boundedVirtual
+      this.virtual = boundedVirtual
+
+      requestAnimationFrame(() => this._dragScrollVertical(e))
     },
 
     /**
@@ -108,15 +127,17 @@ const createTouchHandler = (): HoloTouchClass => {
       const touchEndTimeStamp = performance.now()
       e.preventDefault()
       this.pressed = 0 // Reset after drag event ended
-      const timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp!
-      const speed = _swipe(this.distance!, timeElapsed)
 
+      const timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp
+      const speed = calculateSwipeSpeed(this.distance, timeElapsed)
+
+      // Handle different cases based on speed and time
       if (speed > 1.2) {
-        cyre.call('nxtSlide' + this.id, this.virtual)
+        return cyre.call('nxtSlide' + this.id, this.virtual)
       } else if (speed < -1.2) {
-        cyre.call('prvSlide' + this.id, this.virtual)
-      } else if (_isClicked(timeElapsed)) {
-        this.focus(e)
+        return cyre.call('prvSlide' + this.id, this.virtual)
+      } else if (isClickEvent(timeElapsed)) {
+        return this.focus(e)
       } else {
         return cyre.call('SNAP' + this.id, this.virtual)
       }
@@ -131,6 +152,7 @@ const createTouchHandler = (): HoloTouchClass => {
 
       if (!closestHolo) return false
 
+      // Remove active class from previous element
       if (this.targetHoloComponent) {
         ;(this.targetHoloComponent as HTMLElement).classList.remove('active')
       }
@@ -143,9 +165,8 @@ const createTouchHandler = (): HoloTouchClass => {
     }
   }
 
-  return touch
+  return touchHandler
 }
 
 // Create a singleton touch handler instance
-const Touch = createTouchHandler()
-export default Touch
+export const Touch = createTouchHandler()

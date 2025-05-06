@@ -1,66 +1,81 @@
 //src/components/orientation-handler.ts
 
-import {HoloVirtual} from '../types/interface'
-import {_snap} from '../libs/holo-essentials'
+import type {HoloVirtual} from '../types/interface'
+import {snapToGrid} from '../libs/holo-essentials'
 
 /**
  * Handles horizontal transformations
- * @param virtual - Virtual state
+ * Apply constraints and snap to grid functionality
  */
-export const _transformX = (virtual: HoloVirtual): HoloVirtual => {
-  virtual.transformX = virtual.io.snap
-    ? _snap(virtual.transformX, virtual.item.width || 0)
-    : virtual.transformX
-  virtual.transformY = 0
-
-  if (virtual.transformX >= 0) {
-    virtual.transformX = 0
-    virtual.endOfSlide = 1 //Left EnD of the carousel
-  } else if (virtual.transformX <= virtual.endOfSlidePosition!) {
-    virtual.transformX = virtual.endOfSlidePosition!
-    virtual.endOfSlide = -1 //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0 //in the middle carousel
+export const transformX = (virtual: HoloVirtual): HoloVirtual => {
+  // Create a new object to maintain immutability
+  const updatedVirtual = {
+    ...virtual,
+    transformY: 0,
+    transformX: virtual.io.snap
+      ? snapToGrid(virtual.transformX, virtual.item.width || 0)
+      : virtual.transformX
   }
 
-  return virtual
+  // Apply boundary constraints
+  if (updatedVirtual.transformX >= 0) {
+    updatedVirtual.transformX = 0
+    updatedVirtual.endOfSlide = 1 // Left end of the carousel
+  } else if (updatedVirtual.transformX <= updatedVirtual.endOfSlidePosition!) {
+    updatedVirtual.transformX = updatedVirtual.endOfSlidePosition!
+    updatedVirtual.endOfSlide = -1 // Right end of the carousel
+  } else {
+    updatedVirtual.endOfSlide = 0 // In the middle of carousel
+  }
+
+  return updatedVirtual
 }
 
 /**
  * Handles horizontal transformations (lightweight version)
- * @param virtual - Virtual state
+ * Only applies boundary constraints without snapping
  */
-export const _transformXLite = (virtual: HoloVirtual): HoloVirtual => {
-  virtual.transformY = 0
-
-  if (virtual.transformX >= 0) {
-    virtual.transformX = 0
-  } else if (virtual.transformX <= virtual.endOfSlidePosition!) {
-    virtual.transformX = virtual.endOfSlidePosition!
+export const transformXLite = (virtual: HoloVirtual): HoloVirtual => {
+  // Create a new object to maintain immutability
+  const updatedVirtual = {
+    ...virtual,
+    transformY: 0
   }
 
-  return virtual
+  // Apply boundary constraints only
+  if (updatedVirtual.transformX >= 0) {
+    updatedVirtual.transformX = 0
+  } else if (updatedVirtual.transformX <= updatedVirtual.endOfSlidePosition!) {
+    updatedVirtual.transformX = updatedVirtual.endOfSlidePosition!
+  }
+
+  return updatedVirtual
 }
 
 /**
  * Handles vertical transformations
- * @param virtual - Virtual state
+ * Apply constraints and snap to grid functionality
  */
-export const _transformY = (virtual: HoloVirtual): HoloVirtual => {
-  virtual.transformY = virtual.io.snap
-    ? _snap(virtual.transformY, virtual.item.height || 0)
-    : virtual.transformY
-  virtual.transformX = 0
-
-  if (virtual.transformY >= 0) {
-    virtual.transformY = 0
-    virtual.endOfSlide = 1 //Left EnD of the carousel
-  } else if (virtual.transformY <= virtual.endOfSlidePosition!) {
-    virtual.transformY = virtual.endOfSlidePosition!
-    virtual.endOfSlide = -1 //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0 //in the middle carousel
+export const transformY = (virtual: HoloVirtual): HoloVirtual => {
+  // Create a new object to maintain immutability
+  const updatedVirtual = {
+    ...virtual,
+    transformX: 0,
+    transformY: virtual.io.snap
+      ? snapToGrid(virtual.transformY, virtual.item.height || 0)
+      : virtual.transformY
   }
 
-  return virtual
+  // Apply boundary constraints
+  if (updatedVirtual.transformY >= 0) {
+    updatedVirtual.transformY = 0
+    updatedVirtual.endOfSlide = 1 // Top end of the carousel
+  } else if (updatedVirtual.transformY <= updatedVirtual.endOfSlidePosition!) {
+    updatedVirtual.transformY = updatedVirtual.endOfSlidePosition!
+    updatedVirtual.endOfSlide = -1 // Bottom end of the carousel
+  } else {
+    updatedVirtual.endOfSlide = 0 // In the middle of carousel
+  }
+
+  return updatedVirtual
 }
