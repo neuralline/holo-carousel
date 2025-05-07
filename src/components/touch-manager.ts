@@ -56,6 +56,7 @@ export const setupTouchManager = (selector?: string): boolean => {
   document.addEventListener('touchend', handleTouchEnd)
 
   // Register global event handlers with cyre
+  // FIXED: Use consistent naming pattern and register both on() and action()
   cyre.on('AnimateForward', animateSlideForward)
   cyre.on('AnimateBackward', animateSlideBackward)
   cyre.on('nxtSlide', nxtSlide)
@@ -65,6 +66,19 @@ export const setupTouchManager = (selector?: string): boolean => {
   cyre.on('bringToFocus', Touch.focus)
   cyre.on('wheeler', wheeler)
   cyre.on('activate', activate)
+
+  // Register corresponding actions for each handler (missing in original)
+  cyre.action([
+    {id: 'AnimateForward'},
+    {id: 'AnimateBackward'},
+    {id: 'nxtSlide'},
+    {id: 'prvSlide'},
+    {id: 'firstSlide'},
+    {id: 'lastSlide'},
+    {id: 'bringToFocus'},
+    {id: 'wheeler'},
+    {id: 'activate'}
+  ])
 
   return true
 }

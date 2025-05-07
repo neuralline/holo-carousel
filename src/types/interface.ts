@@ -29,6 +29,17 @@ export interface HoloVirtual {
   }
   noOfChildren?: number
   startNumber?: number
+  // ADDED: Store event IDs to ensure consistency
+  eventIds?: {
+    animate?: string
+    snap?: string
+    prevSlide?: string
+    nextSlide?: string
+    lastSlide?: string
+    firstSlide?: string
+    activate?: string
+    [key: string]: string | undefined
+  }
 }
 
 export interface HoloShadow {

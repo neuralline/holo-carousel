@@ -106,6 +106,7 @@ export const calculateSliderPosition = (virtual: HoloVirtual): HoloVirtual => {
 
 /**
  * Manage active/highlighted slides
+ * FIXED: Consistent event ID usage
  */
 export const activate = ([element, virtual]: [
   HTMLElement,
@@ -116,12 +117,16 @@ export const activate = ([element, virtual]: [
     transformX: -Math.abs(element.offsetLeft)
   }
 
-  cyre.call('SNAP' + updatedVirtual.id, updatedVirtual)
+  // Get the event ID from virtual state or create consistent ID
+  const snapEventId = virtual.eventIds?.snap || `snap_${updatedVirtual.id}`
+
+  cyre.call(snapEventId, updatedVirtual)
   element.classList.add('active')
 }
 
 /**
  * Go to previous slide
+ * FIXED: Consistent event ID usage
  */
 export const prvSlide = (virtual: HoloVirtual): void => {
   if (virtual.endOfSlide === 1) return // At left end, cannot go further left
@@ -132,11 +137,15 @@ export const prvSlide = (virtual: HoloVirtual): void => {
     transformY: virtual.transformY + (virtual.carousel.height || 0)
   }
 
-  return cyre.call('SNAP' + updatedVirtual.id, updatedVirtual)
+  // Get the event ID from virtual state or create consistent ID
+  const snapEventId = virtual.eventIds?.snap || `snap_${updatedVirtual.id}`
+
+  return cyre.call(snapEventId, updatedVirtual)
 }
 
 /**
  * Go to next slide
+ * FIXED: Consistent event ID usage
  */
 export const nxtSlide = (virtual: HoloVirtual): void => {
   if (virtual.endOfSlide === -1) return // At right end, cannot go further right
@@ -147,11 +156,15 @@ export const nxtSlide = (virtual: HoloVirtual): void => {
     transformY: virtual.transformY - (virtual.carousel.height || 0)
   }
 
-  return cyre.call('SNAP' + updatedVirtual.id, updatedVirtual)
+  // Get the event ID from virtual state or create consistent ID
+  const snapEventId = virtual.eventIds?.snap || `snap_${updatedVirtual.id}`
+
+  return cyre.call(snapEventId, updatedVirtual)
 }
 
 /**
  * Jump to first slide
+ * FIXED: Consistent event ID usage
  */
 export const firstSlide = (virtual: HoloVirtual): void => {
   const updatedVirtual = {
@@ -161,11 +174,15 @@ export const firstSlide = (virtual: HoloVirtual): void => {
     endOfSlide: 1
   }
 
-  return cyre.call('SNAP' + updatedVirtual.id, updatedVirtual)
+  // Get the event ID from virtual state or create consistent ID
+  const snapEventId = virtual.eventIds?.snap || `snap_${updatedVirtual.id}`
+
+  return cyre.call(snapEventId, updatedVirtual)
 }
 
 /**
  * Jump to last slide
+ * FIXED: Consistent event ID usage
  */
 export const lastSlide = (virtual: HoloVirtual): void => {
   const updatedVirtual = {
@@ -175,45 +192,69 @@ export const lastSlide = (virtual: HoloVirtual): void => {
     endOfSlide: -1
   }
 
-  return cyre.call('SNAP' + updatedVirtual.id, updatedVirtual)
+  // Get the event ID from virtual state or create consistent ID
+  const snapEventId = virtual.eventIds?.snap || `snap_${updatedVirtual.id}`
+
+  return cyre.call(snapEventId, updatedVirtual)
 }
 
 /**
  * Animate slides forward
+ * FIXED: Consistent event ID usage
  */
 export const animateSlideForward = (virtual: HoloVirtual): void => {
   console.log('animating forward', virtual.id)
 
-  if (virtual.endOfSlide === -1) {
-    return cyre.call('firstSlide' + virtual.id, virtual)
+  // Get event IDs from virtual state or create consistent IDs
+  const eventIds = virtual.eventIds || {
+    firstSlide: `first_slide_${virtual.id}`,
+    nextSlide: `next_slide_${virtual.id}`
   }
 
-  return cyre.call('nxtSlide' + virtual.id, virtual)
+  if (virtual.endOfSlide === -1) {
+    return cyre.call(eventIds.firstSlide, virtual)
+  }
+
+  return cyre.call(eventIds.nextSlide, virtual)
 }
 
 /**
  * Animate slides backward
+ * FIXED: Consistent event ID usage
  */
 export const animateSlideBackward = (virtual: HoloVirtual): void => {
   console.log('animating backward', virtual.id)
 
-  if (virtual.endOfSlide === 1) {
-    return cyre.call('lastSlide' + virtual.id, virtual)
+  // Get event IDs from virtual state or create consistent IDs
+  const eventIds = virtual.eventIds || {
+    lastSlide: `last_slide_${virtual.id}`,
+    prevSlide: `prev_slide_${virtual.id}`
   }
 
-  return cyre.call('prvSlide' + virtual.id, virtual)
+  if (virtual.endOfSlide === 1) {
+    return cyre.call(eventIds.lastSlide, virtual)
+  }
+
+  return cyre.call(eventIds.prevSlide, virtual)
 }
 
 /**
  * Mouse wheel controller
+ * FIXED: Consistent event ID usage
  */
 export const wheeler = (e: WheelEvent, id: string): void => {
   e.preventDefault()
   const virtual = _holo[id].getVirtual
 
+  // Get event IDs from virtual state or create consistent IDs
+  const eventIds = virtual.eventIds || {
+    prevSlide: `prev_slide_${virtual.id}`,
+    nextSlide: `next_slide_${virtual.id}`
+  }
+
   if (e.deltaY < 0) {
-    cyre.call('prvSlide' + virtual.id, virtual)
+    cyre.call(eventIds.prevSlide, virtual)
   } else if (e.deltaY > 0) {
-    cyre.call('nxtSlide' + virtual.id, virtual)
+    cyre.call(eventIds.nextSlide, virtual)
   }
 }

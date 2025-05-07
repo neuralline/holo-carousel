@@ -50,9 +50,8 @@ export default defineConfig({
       external: [],
       output: {
         globals: {},
-        exports: 'named',
+        exports: 'auto', // Changed from 'named' to 'auto'
         extend: true,
-        // Ensure UMD format works in all environments
         format: 'umd',
         name: 'Holo',
         // Force CommonJS output to be compatible with ES modules

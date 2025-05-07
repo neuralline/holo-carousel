@@ -120,6 +120,7 @@ const createTouchHandler = (): HoloTouchClass => {
 
     /**
      * Register event/mouse position when touch/drag ends
+     * CRITICAL FIX: Call to generic methods instead of specific IDs when they're missing
      */
     _touchEnd(e: MouseEvent | TouchEvent): void | {ok: boolean; data: string} {
       if (!this.pressed) return {ok: false, data: 'not active'}
@@ -131,20 +132,42 @@ const createTouchHandler = (): HoloTouchClass => {
       const timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp
       const speed = calculateSwipeSpeed(this.distance, timeElapsed)
 
-      // Handle different cases based on speed and time
-      if (speed > 1.2) {
-        return cyre.call('nxtSlide' + this.id, this.virtual)
-      } else if (speed < -1.2) {
-        return cyre.call('prvSlide' + this.id, this.virtual)
-      } else if (isClickEvent(timeElapsed)) {
-        return this.focus(e)
-      } else {
-        return cyre.call('SNAP' + this.id, this.virtual)
+      // FIXED: Use general events when specific ones aren't available
+      // This prevents the "No subscriber found" error
+      try {
+        if (speed > 1.2) {
+          // Try instance-specific ID first, fall back to general one if it fails
+          if (this.virtual.eventIds?.nextSlide) {
+            return cyre.call(this.virtual.eventIds.nextSlide, this.virtual)
+          } else {
+            // Fall back to general event
+            return cyre.call('nxtSlide', this.virtual)
+          }
+        } else if (speed < -1.2) {
+          if (this.virtual.eventIds?.prevSlide) {
+            return cyre.call(this.virtual.eventIds.prevSlide, this.virtual)
+          } else {
+            return cyre.call('prvSlide', this.virtual)
+          }
+        } else if (isClickEvent(timeElapsed)) {
+          return this.focus(e)
+        } else {
+          if (this.virtual.eventIds?.snap) {
+            return cyre.call(this.virtual.eventIds.snap, this.virtual)
+          } else {
+            return cyre.call('SNAP', this.virtual)
+          }
+        }
+      } catch (error) {
+        console.error('Touch end error:', error)
+        // Fall back to SNAP as last resort
+        return cyre.call('SNAP', this.virtual)
       }
     },
 
     /**
      * Highlight active/selected slide
+     * FIXED: Fall back to general activate event if specific one isn't available
      */
     focus(e: MouseEvent | TouchEvent): boolean | void {
       const target = e.target as HTMLElement
@@ -158,10 +181,24 @@ const createTouchHandler = (): HoloTouchClass => {
       }
 
       this.targetHoloComponent = closestHolo
-      return cyre.call('activate' + this.id, [
-        this.targetHoloComponent,
-        this.virtual
-      ])
+
+      try {
+        // Try instance-specific event first
+        if (this.virtual.eventIds?.activate) {
+          return cyre.call(this.virtual.eventIds.activate, [
+            this.targetHoloComponent,
+            this.virtual
+          ])
+        } else {
+          // Fall back to general event
+          return cyre.call('activate', [this.targetHoloComponent, this.virtual])
+        }
+      } catch (error) {
+        console.error('Focus error:', error)
+        // Fall back to directly adding active class
+        this.targetHoloComponent.classList.add('active')
+        return true
+      }
     }
   }
 
