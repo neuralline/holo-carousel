@@ -1,14 +1,15 @@
-//src/components/holo-touch.ts
+// src/components/holo-touch.ts
 
 import {cyre} from 'cyre'
 import type {HoloTouchClass, HoloVirtual} from '../types/interface'
 import {_holo, isClickEvent, calculateSwipeSpeed} from '../libs/holo-essentials'
-import {transformXLite, transformY} from './orientation-handler'
+import {transformXLite, transformY, applyTransform} from './orientation-handler'
+import {EVENTS, TOUCH_EVENTS, PERFORMANCE} from '../config/holo-config'
+import {safeEventCall} from '../core/holo-event-system'
 
 /**
  * H.O.L.O - C.A.R.O.U.S.E.L
- * TOUCH EVENTS HANDLER
- * Create a touch handler (functional approach)
+ * Enhanced touch system with error handling and performance optimizations
  */
 const createTouchHandler = (): HoloTouchClass => {
   const touchHandler: HoloTouchClass = {
@@ -16,7 +17,7 @@ const createTouchHandler = (): HoloTouchClass => {
     positionY: 0,
     pressed: 0,
     virtual: {} as HoloVirtual,
-    multiplier: 1.482,
+    multiplier: 1.5, // Slightly increased for smoother feel
     touch: {
       start: 'mousedown',
       move: 'mousemove',
@@ -31,17 +32,29 @@ const createTouchHandler = (): HoloTouchClass => {
     snapShotWidth: 0,
     snapShotHeight: 0,
     distance: 0,
+    animationFrameId: 0, // For canceling animation frames
 
     /**
-     * Register if touch/click has occurred
+     * Register touch/click start event
      */
     _touchStart(e: MouseEvent | TouchEvent, id: string = ''): void {
-      if (!id || this.pressed) {
-        console.error('Holo touch: not my business')
+      // Validation
+      if (!id) {
+        console.warn('Touch start: Missing carousel ID')
         return
       }
 
-      this.TouchStartTimeStamp = performance.now() // Start timer
+      if (this.pressed) {
+        // Already in a touch/drag operation
+        return
+      }
+
+      if (!_holo[id]) {
+        console.error('Touch start: Invalid carousel ID:', id)
+        return
+      }
+
+      this.TouchStartTimeStamp = performance.now()
 
       // Reset and initialize state
       this.virtual = _holo[id].getVirtual
@@ -67,16 +80,23 @@ const createTouchHandler = (): HoloTouchClass => {
       }
 
       e.preventDefault()
-      _holo[this.id].updateStyle = 0
+
+      // Disable transition for the drag
+      if (_holo[this.id]) {
+        _holo[this.id].updateStyle = 0
+      }
     },
 
     /**
-     * Handle horizontal drag touch moves
+     * Handle horizontal drag with optimized animation frame
      */
     _dragScrollHorizontal(
       e: MouseEvent | TouchEvent
     ): void | {ok: boolean; data: string} {
-      if (!this.pressed) return {ok: false, data: 'not active'}
+      if (!this.pressed || !this.id || !_holo[this.id]) {
+        this.cancelDragAnimation()
+        return {ok: false, data: 'Touch not active or invalid state'}
+      }
 
       this.distance = this.positionX - this.currentX
 
@@ -88,19 +108,29 @@ const createTouchHandler = (): HoloTouchClass => {
 
       // Apply constraints and update state
       const boundedVirtual = transformXLite(updatedVirtual)
-      _holo[this.id!].setState = boundedVirtual
-      this.virtual = boundedVirtual
 
-      requestAnimationFrame(() => this._dragScrollHorizontal(e))
+      // Only update if position has changed
+      if (boundedVirtual.transformX !== this.virtual.transformX) {
+        _holo[this.id].setState = boundedVirtual
+        this.virtual = boundedVirtual
+      }
+
+      // Use requestAnimationFrame for smooth animation
+      this.animationFrameId = requestAnimationFrame(() =>
+        this._dragScrollHorizontal(e)
+      )
     },
 
     /**
-     * Handle vertical drag touch moves
+     * Handle vertical drag with optimized animation frame
      */
     _dragScrollVertical(
       e: MouseEvent | TouchEvent
     ): void | {ok: boolean; data: string} {
-      if (!this.pressed) return {ok: false, data: 'not active'}
+      if (!this.pressed || !this.id || !_holo[this.id]) {
+        this.cancelDragAnimation()
+        return {ok: false, data: 'Touch not active or invalid state'}
+      }
 
       this.distance = this.positionY - this.currentY
 
@@ -112,18 +142,39 @@ const createTouchHandler = (): HoloTouchClass => {
 
       // Apply constraints and update state
       const boundedVirtual = transformY(updatedVirtual)
-      _holo[this.id!].setState = boundedVirtual
-      this.virtual = boundedVirtual
 
-      requestAnimationFrame(() => this._dragScrollVertical(e))
+      // Only update if position has changed
+      if (boundedVirtual.transformY !== this.virtual.transformY) {
+        _holo[this.id].setState = boundedVirtual
+        this.virtual = boundedVirtual
+      }
+
+      // Use requestAnimationFrame for smooth animation
+      this.animationFrameId = requestAnimationFrame(() =>
+        this._dragScrollVertical(e)
+      )
     },
 
     /**
-     * Register event/mouse position when touch/drag ends
-     * CRITICAL FIX: Call to generic methods instead of specific IDs when they're missing
+     * Cancel animation frame if needed
+     */
+    cancelDragAnimation(): void {
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId)
+        this.animationFrameId = 0
+      }
+    },
+
+    /**
+     * Handle touch/drag end event with fallback
      */
     _touchEnd(e: MouseEvent | TouchEvent): void | {ok: boolean; data: string} {
-      if (!this.pressed) return {ok: false, data: 'not active'}
+      // Cancel any ongoing animation
+      this.cancelDragAnimation()
+
+      if (!this.pressed || !this.id || !this.virtual?.id) {
+        return {ok: false, data: 'Touch not active or invalid state'}
+      }
 
       const touchEndTimeStamp = performance.now()
       e.preventDefault()
@@ -131,71 +182,84 @@ const createTouchHandler = (): HoloTouchClass => {
 
       const timeElapsed = touchEndTimeStamp - this.TouchStartTimeStamp
       const speed = calculateSwipeSpeed(this.distance, timeElapsed)
+      const eventIds = this.virtual.eventIds || {}
 
-      // FIXED: Use general events when specific ones aren't available
-      // This prevents the "No subscriber found" error
       try {
-        if (speed > 1.2) {
-          // Try instance-specific ID first, fall back to general one if it fails
-          if (this.virtual.eventIds?.nextSlide) {
-            return cyre.call(this.virtual.eventIds.nextSlide, this.virtual)
-          } else {
-            // Fall back to general event
-            return cyre.call('nxtSlide', this.virtual)
-          }
-        } else if (speed < -1.2) {
-          if (this.virtual.eventIds?.prevSlide) {
-            return cyre.call(this.virtual.eventIds.prevSlide, this.virtual)
-          } else {
-            return cyre.call('prvSlide', this.virtual)
-          }
+        // Re-enable transitions first (for smooth snapping)
+        if (_holo[this.id]) {
+          _holo[this.id].updateStyle = 1
+        }
+
+        // Apply snapping for all cases
+        let updatedVirtual = {...this.virtual}
+
+        // For snap-enabled carousels, always apply grid snapping
+        if (updatedVirtual.io.snap) {
+          updatedVirtual = applyTransform(updatedVirtual, false)
+        }
+
+        // Determine the appropriate action based on the gesture
+        if (Math.abs(speed) > 1.2) {
+          // Fast swipe - treat as next/previous
+          const eventId =
+            speed > 0
+              ? eventIds.nextSlide || EVENTS.NEXT_SLIDE
+              : eventIds.prevSlide || EVENTS.PREV_SLIDE
+
+          safeEventCall(
+            eventId,
+            speed > 0 ? EVENTS.NEXT_SLIDE : EVENTS.PREV_SLIDE,
+            updatedVirtual
+          )
         } else if (isClickEvent(timeElapsed)) {
+          // Quick tap - treat as click
           return this.focus(e)
         } else {
-          if (this.virtual.eventIds?.snap) {
-            return cyre.call(this.virtual.eventIds.snap, this.virtual)
-          } else {
-            return cyre.call('SNAP', this.virtual)
-          }
+          // Normal drag end - snap to position
+          safeEventCall(
+            eventIds.snap || `snap_${this.virtual.id}`,
+            EVENTS.SNAP,
+            updatedVirtual
+          )
         }
       } catch (error) {
         console.error('Touch end error:', error)
-        // Fall back to SNAP as last resort
-        return cyre.call('SNAP', this.virtual)
+        // Last resort fallback
+        safeEventCall(EVENTS.SNAP, EVENTS.SNAP, this.virtual)
       }
     },
 
     /**
-     * Highlight active/selected slide
-     * FIXED: Fall back to general activate event if specific one isn't available
+     * Focus/highlight the clicked slide
      */
     focus(e: MouseEvent | TouchEvent): boolean | void {
       const target = e.target as HTMLElement
       const closestHolo = target.closest('li.holo')
 
-      if (!closestHolo) return false
+      if (!closestHolo || !this.id || !this.virtual?.id) {
+        return false
+      }
 
       // Remove active class from previous element
-      if (this.targetHoloComponent) {
-        ;(this.targetHoloComponent as HTMLElement).classList.remove('active')
+      if (this.targetHoloComponent instanceof HTMLElement) {
+        this.targetHoloComponent.classList.remove('active')
       }
 
       this.targetHoloComponent = closestHolo
 
       try {
-        // Try instance-specific event first
-        if (this.virtual.eventIds?.activate) {
-          return cyre.call(this.virtual.eventIds.activate, [
-            this.targetHoloComponent,
-            this.virtual
-          ])
-        } else {
-          // Fall back to general event
-          return cyre.call('activate', [this.targetHoloComponent, this.virtual])
-        }
+        // Get the event ID or use fallback
+        const activateEvent = this.virtual.eventIds?.activate || EVENTS.ACTIVATE
+
+        safeEventCall(activateEvent, EVENTS.ACTIVATE, [
+          this.targetHoloComponent,
+          this.virtual
+        ])
+
+        return true
       } catch (error) {
         console.error('Focus error:', error)
-        // Fall back to directly adding active class
+        // Direct DOM manipulation as last resort
         this.targetHoloComponent.classList.add('active')
         return true
       }
@@ -207,3 +271,47 @@ const createTouchHandler = (): HoloTouchClass => {
 
 // Create a singleton touch handler instance
 export const Touch = createTouchHandler()
+
+/**
+ * Setup global touch listeners
+ */
+export const setupGlobalTouchListeners = (): void => {
+  // Mouse move event
+  const handleMouseMove = (e: MouseEvent): void => {
+    if (Touch.pressed) {
+      Touch.currentX = e.clientX
+      Touch.currentY = e.clientY
+    }
+  }
+
+  // Mouse up event
+  const handleMouseUp = (e: MouseEvent): void => {
+    if (Touch.pressed) {
+      Touch._touchEnd(e)
+    }
+  }
+
+  // Touch move event
+  const handleTouchMove = (e: TouchEvent): void => {
+    if (Touch.pressed) {
+      Touch.currentX = e.touches[0].clientX
+      Touch.currentY = e.touches[0].clientY
+      // Prevent page scrolling during carousel touch
+      e.preventDefault()
+    }
+  }
+
+  // Touch end event
+  const handleTouchEnd = (e: TouchEvent): void => {
+    if (Touch.pressed) {
+      Touch._touchEnd(e)
+    }
+  }
+
+  // Add throttled event listeners to improve performance
+  document.addEventListener('mousemove', handleMouseMove, {passive: true})
+  document.addEventListener('mouseup', handleMouseUp)
+  document.addEventListener('touchmove', handleTouchMove, {passive: false})
+  document.addEventListener('touchend', handleTouchEnd)
+  document.addEventListener('touchcancel', handleTouchEnd)
+}

@@ -1,106 +1,64 @@
-//src/components/holo-io-manager.ts
+// src/components/holo-io-manager.ts
 
 import {cyre} from 'cyre'
 import type {HoloVirtual, HoloShadow} from '../types/interface'
 import {Touch} from './holo-touch'
-import {
-  wheeler,
-  prvSlide,
-  nxtSlide,
-  firstSlide,
-  lastSlide,
-  activate,
-  animateSlideForward,
-  animateSlideBackward
-} from '../libs/holo-essentials'
+import {wheeler} from '../libs/holo-essentials'
+import {EVENTS} from '../config/holo-config'
+import {registerInstanceEvents, safeEventCall} from '../core/holo-event-system'
 
 /**
  * H.O.L.O - C.A.R.O.U.S.E.L
- * IO manager
+ * Improved IO manager with error handling and cleanup
+ */
+
+/**
  * Setup input/output event handling for a carousel instance
  */
 export const setupIOManager = (
   virtual: HoloVirtual,
   shadow: HoloShadow
 ): void => {
+  // Validation
   if (!virtual) {
-    console.error('@Holo: Major malfunctions - Virtual state is missing')
+    console.error('IO Manager: Missing virtual state')
     return
   }
 
   if (!virtual.id) {
-    console.error('@Holo: Virtual state has no ID')
+    console.error('IO Manager: Virtual state has no ID')
     return
   }
 
-  // Register events with cyre
-  setupCyreActions(virtual)
+  if (!shadow?.carousel || !shadow?.container) {
+    console.error('IO Manager: Invalid shadow DOM references', virtual.id)
+    return
+  }
+
+  // Register instance-specific events with cyre
+  const updatedVirtual = registerInstanceEvents(virtual)
 
   // Setup DOM event handlers if enabled
-  if (virtual.io.enabled) {
-    setupDomEventHandlers(virtual, shadow)
+  if (updatedVirtual.io.enabled) {
+    setupDomEventHandlers(updatedVirtual, shadow)
   }
 
   // Initial refresh
-  cyre.call('refresh_carousel', {virtual, shadow})
+  safeEventCall(EVENTS.REFRESH_CAROUSEL, EVENTS.REFRESH_CAROUSEL, {
+    virtual: updatedVirtual,
+    shadow
+  })
 }
 
 /**
- * CRITICAL FIX: Setup Cyre actions for event handling with proper ID registration
- * We need to register BOTH the generic and instance-specific event IDs
- */
-const setupCyreActions = (virtual: HoloVirtual): void => {
-  // Define event IDs consistently
-  const eventIds = {
-    animate: `animate_${virtual.id}`,
-    snap: `snap_${virtual.id}`,
-    prevSlide: `prev_slide_${virtual.id}`,
-    nextSlide: `next_slide_${virtual.id}`,
-    lastSlide: `last_slide_${virtual.id}`,
-    firstSlide: `first_slide_${virtual.id}`,
-    activate: `activate_${virtual.id}`
-  }
-
-  // Store the event IDs in the virtual state for reference
-  virtual.eventIds = eventIds
-
-  // CRITICAL FIX: Register instance-specific event handlers
-  // This ensures that when we call an ID like "animate_au_carousel3", it has a handler
-  cyre.on(
-    eventIds.animate,
-    virtual.io.animateDirection > 0 ? animateSlideForward : animateSlideBackward
-  )
-  cyre.on(eventIds.snap, payload => cyre.call('SNAP', payload))
-  cyre.on(eventIds.prevSlide, prvSlide)
-  cyre.on(eventIds.nextSlide, nxtSlide)
-  cyre.on(eventIds.lastSlide, lastSlide)
-  cyre.on(eventIds.firstSlide, firstSlide)
-  cyre.on(eventIds.activate, activate)
-
-  // CRITICAL FIX: Register instance-specific actions
-  cyre.action([
-    {
-      id: eventIds.animate,
-      interval: virtual.io.duration,
-      repeat: virtual.io.loop,
-      log: true
-    },
-    {id: eventIds.snap},
-    {id: eventIds.prevSlide},
-    {id: eventIds.nextSlide},
-    {id: eventIds.lastSlide},
-    {id: eventIds.firstSlide},
-    {id: eventIds.activate}
-  ])
-}
-
-/**
- * Setup DOM event handlers
+ * Setup DOM event handlers with cleanup capabilities
  */
 const setupDomEventHandlers = (
   virtual: HoloVirtual,
   shadow: HoloShadow
-): void => {
+): (() => void) => {
+  const cleanupFunctions: Array<() => void> = []
+
   // Mouse drag handler
   if (virtual.io.drag) {
     const handleMouseDown = (e: MouseEvent): void => {
@@ -109,6 +67,9 @@ const setupDomEventHandlers = (
     }
 
     shadow.container.addEventListener('mousedown', handleMouseDown)
+    cleanupFunctions.push(() => {
+      shadow.container.removeEventListener('mousedown', handleMouseDown)
+    })
   }
 
   // Touch drag handler
@@ -118,7 +79,12 @@ const setupDomEventHandlers = (
       Touch._touchStart(e, virtual.id)
     }
 
-    shadow.container.addEventListener('touchstart', handleTouchStart)
+    shadow.container.addEventListener('touchstart', handleTouchStart, {
+      passive: false
+    })
+    cleanupFunctions.push(() => {
+      shadow.container.removeEventListener('touchstart', handleTouchStart)
+    })
   }
 
   // Mouse wheel handler
@@ -127,20 +93,50 @@ const setupDomEventHandlers = (
       wheeler(e, virtual.id)
     }
 
-    shadow.carousel.addEventListener('wheel', handleWheel)
+    shadow.carousel.addEventListener('wheel', handleWheel, {passive: false})
+    cleanupFunctions.push(() => {
+      shadow.carousel.removeEventListener('wheel', handleWheel)
+    })
   }
 
   // Animation handler
-  if (virtual.io.animate) {
+  if (virtual.io.animate && virtual.eventIds?.animate) {
     cyre.call(virtual.eventIds.animate, virtual)
   }
 
-  // Resize handler
-  const handleResize = (): void => {
-    cyre.call('refresh_carousel', {virtual, shadow})
-  }
+  // Resize observer for better performance than resize event
+  const resizeObserver = new ResizeObserver(
+    throttle(() => {
+      safeEventCall(EVENTS.REFRESH_CAROUSEL, EVENTS.REFRESH_CAROUSEL, {
+        virtual,
+        shadow
+      })
+    }, 100)
+  )
 
-  shadow.container.addEventListener('resize', handleResize, false)
+  resizeObserver.observe(shadow.carousel)
+  cleanupFunctions.push(() => resizeObserver.disconnect())
+
+  // Return a cleanup function that removes all event listeners
+  return () => cleanupFunctions.forEach(cleanup => cleanup())
+}
+
+/**
+ * Simple throttle function to limit event firing
+ */
+const throttle = <T extends (...args: any[]) => any>(
+  func: T,
+  limit: number
+): ((...args: Parameters<T>) => void) => {
+  let inThrottle: boolean = false
+
+  return function (this: any, ...args: Parameters<T>): void {
+    if (!inThrottle) {
+      func.apply(this, args)
+      inThrottle = true
+      setTimeout(() => (inThrottle = false), limit)
+    }
+  }
 }
 
 export default setupIOManager

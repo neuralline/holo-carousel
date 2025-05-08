@@ -70,18 +70,17 @@
       <script src="umd/holo.js"></script>
       <script>
         // Use window.Holo directly, as it's now explicitly exposed
-        console.log('Holo', window.Holo)
 
         // Initialize the carousel
         window.Holo.INIT('holo-carousel')
         window.Holo.AUTO('holo-carousel')
 
         window.Holo.carousel('au_carousel3', {
-          wheel: false,
-          drag: 0,
-          swipe: 0,
-          snap: 0,
-          focus: 0
+          wheel: 1,
+          drag: 1,
+          swipe: 1,
+          snap: 1,
+          focus: 1
         })
       </script>
     </div>

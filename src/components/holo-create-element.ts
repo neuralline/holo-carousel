@@ -1,8 +1,8 @@
-//src/components/holo-create-element.ts
+// src/components/holo-create-element.ts
 
 import type {HoloIOOptions} from '../types/interface'
 import {_holo} from '../libs/holo-essentials'
-import setupIOManager from './holo-io-manager'
+import {setupIOManager} from './holo-io-manager'
 import {createHoloInstance} from '../core/holo-state'
 
 /**
@@ -14,6 +14,7 @@ export const holoCreateElement = (
   slide: HTMLElement,
   io: Partial<HoloIOOptions> = {}
 ): void => {
+  // Validate input
   if (!slide || !slide.nodeType) {
     console.error('@Holo: Invalid DOM element provided')
     return
@@ -24,9 +25,15 @@ export const holoCreateElement = (
     slide.id = `holo-${Date.now()}`
   }
 
-  // Create and register the carousel instance
-  _holo[slide.id] = createHoloInstance(slide, io)
+  try {
+    // Create and register the carousel instance
+    _holo[slide.id] = createHoloInstance(slide, io)
 
-  // Setup event handlers
-  setupIOManager(_holo[slide.id].getVirtual, _holo[slide.id].getShadow)
+    // Setup event handlers
+    setupIOManager(_holo[slide.id].getVirtual, _holo[slide.id].getShadow)
+
+    console.log('@Holo: Created carousel:', slide.id)
+  } catch (error) {
+    console.error('@Holo: Failed to create carousel:', error)
+  }
 }
