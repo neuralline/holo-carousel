@@ -17,6 +17,54 @@ export const isVisibilityAvailable = (): boolean => {
 }
 
 /**
+ * Get flex gap value from container element
+ * Handles both inline styles and CSS variables
+ */
+export const getFlexGap = (container: HTMLElement): number => {
+  if (!container) return 0
+
+  try {
+    // Try to get computed style
+    const style = window.getComputedStyle(container)
+
+    // Check for gap property (most modern browsers)
+    if (style.gap && style.gap !== 'normal') {
+      // Parse gap value (remove 'px' or other units)
+      const gapValue = parseInt(style.gap, 10)
+      if (!isNaN(gapValue)) {
+        return gapValue
+      }
+    }
+
+    // Check for CSS variable (fallback)
+    const rootStyle = window.getComputedStyle(document.documentElement)
+    const gapVar = rootStyle.getPropertyValue('--holo-slide-gap')
+
+    if (gapVar) {
+      const gapValue = parseInt(gapVar, 10)
+      if (!isNaN(gapValue)) {
+        return gapValue
+      }
+    }
+
+    // Check for row-gap and column-gap separately
+    const rowGap =
+      style.rowGap && style.rowGap !== 'normal' ? parseInt(style.rowGap, 10) : 0
+    const columnGap =
+      style.columnGap && style.columnGap !== 'normal'
+        ? parseInt(style.columnGap, 10)
+        : 0
+
+    // For horizontal carousels, column-gap matters most
+    // For vertical carousels, row-gap matters most
+    return Math.max(rowGap || 0, columnGap || 0)
+  } catch (error) {
+    CyreLog.warn('Error detecting flex gap:', error)
+    return 0 // Default to no gap if detection fails
+  }
+}
+
+/**
  * Get element dimensions including margins with additional safeguards
  */
 export const getElementDimensions = (element: HTMLElement): HoloDimensions => {
@@ -132,6 +180,9 @@ export const calculateCarouselDimensions = (
       window.innerHeight || 768
     )
 
+    // CRITICAL: Detect flex gap now and include it in calculations
+    const flexGap = getFlexGap(shadow.container)
+
     // IMPROVED: More accurate calculation of total width and max slide dimensions
     let totalWidth = 0
     let totalHeight = 0
@@ -139,7 +190,7 @@ export const calculateCarouselDimensions = (
     let maxSlideHeight = 0
 
     // Measure each slide individually to account for varying widths
-    slides.forEach(slide => {
+    slides.forEach((slide, index) => {
       // Make sure the slide is visible for measurement
       const originalSlideStyle = slide.style.cssText
       slide.style.visibility = 'visible'
@@ -165,34 +216,53 @@ export const calculateCarouselDimensions = (
 
       // Add to total dimensions - CRITICAL for scrolling all slides
       totalWidth += slideWidth
+
+      // If not the last item, add gap for horizontal layout
+      if (index < slides.length - 1) {
+        totalWidth += flexGap
+      }
+
       totalHeight += slideHeight
+
+      // If not the last item, add gap for vertical layout
+      if (index < slides.length - 1) {
+        totalHeight += flexGap
+      }
 
       // Restore original style
       slide.style.cssText = originalSlideStyle
     })
 
     // Add safety margin to ensure last slide is fully visible
-    totalWidth += maxSlideWidth * 0.2 // Add 20% of a slide width as padding
+    totalWidth += maxSlideWidth * 0.1 // Add 10% of a slide width as padding
 
     // Fallback if dimensions are still zero
     if (maxSlideWidth === 0) maxSlideWidth = 200
     if (maxSlideHeight === 0) maxSlideHeight = 200
-    if (totalWidth === 0) totalWidth = maxSlideWidth * slides.length
-    if (totalHeight === 0) totalHeight = maxSlideHeight * slides.length
+    if (totalWidth === 0)
+      totalWidth = (maxSlideWidth + flexGap) * slides.length - flexGap
+    if (totalHeight === 0)
+      totalHeight = (maxSlideHeight + flexGap) * slides.length - flexGap
 
     // Calculate how many items can fit in view
     const numberOfSlots = Math.min(
-      Math.max(1, Math.floor(parentWidth / maxSlideWidth)),
+      Math.max(1, Math.floor(parentWidth / (maxSlideWidth + flexGap))),
       virtual.item.max || 10
     )
 
     // Calculate carousel dimensions (the viewport)
     const carouselWidth = virtual.io.orientation
       ? parentWidth
-      : Math.min(numberOfSlots * maxSlideWidth, parentWidth)
+      : Math.min(
+          numberOfSlots * (maxSlideWidth + flexGap) - flexGap,
+          parentWidth
+        )
 
     const carouselHeight = virtual.io.orientation
-      ? Math.min(numberOfSlots * maxSlideHeight, parentHeight)
+      ? Math.min(
+          numberOfSlots * (maxSlideHeight + flexGap) - flexGap,
+          parentHeight
+        )
       : maxSlideHeight
 
     // CRITICAL FIX: Calculate container dimensions to include ALL slides
@@ -210,6 +280,15 @@ export const calculateCarouselDimensions = (
       ? -Math.max(0, containerHeight - carouselHeight)
       : -Math.max(0, containerWidth - carouselWidth)
 
+    // Store the detected flex gap in the virtual state for later use
+    const slideWithGap = {
+      width: maxSlideWidth + flexGap,
+      height: maxSlideHeight + flexGap,
+      actualWidth: maxSlideWidth,
+      actualHeight: maxSlideHeight,
+      gap: flexGap
+    }
+
     // Restore original styles
     shadow.carousel.style.cssText = originalCarouselStyle
     shadow.container.style.cssText = originalContainerStyle
@@ -219,6 +298,9 @@ export const calculateCarouselDimensions = (
       slides: slides.length,
       slideWidth: maxSlideWidth,
       slideHeight: maxSlideHeight,
+      flexGap,
+      slideWithGapWidth: slideWithGap.width,
+      slideWithGapHeight: slideWithGap.height,
       carouselWidth,
       carouselHeight,
       containerWidth,
@@ -232,8 +314,7 @@ export const calculateCarouselDimensions = (
       ...virtual,
       item: {
         ...virtual.item,
-        width: maxSlideWidth,
-        height: maxSlideHeight
+        ...slideWithGap
       },
       numberOfSlots,
       carousel: {
@@ -286,7 +367,8 @@ export const forceCalculateCarouselDimensions = (
       ) {
         CyreLog.info(`Successfully calculated dimensions for ${id}:`, {
           width: updatedVirtual.item.width,
-          height: updatedVirtual.item.height
+          height: updatedVirtual.item.height,
+          gap: updatedVirtual.item.gap
         })
         resolve(true)
         return
@@ -326,7 +408,8 @@ export const forceCalculateCarouselDimensions = (
 
           CyreLog.info(`Retry succeeded for ${id}:`, {
             width: retryVirtual.item.width,
-            height: retryVirtual.item.height
+            height: retryVirtual.item.height,
+            gap: retryVirtual.item.gap
           })
 
           resolve(true)
@@ -364,6 +447,7 @@ export const getCurrentSlideIndex = (virtual: HoloVirtual): number => {
   }
 
   // Calculate based on transform position and item width/height
+  // Use width/height that includes gap for proper calculations
   const slideDimension = virtual.io.orientation
     ? virtual.item.height || 1
     : virtual.item.width || 1
@@ -377,7 +461,7 @@ export const getCurrentSlideIndex = (virtual: HoloVirtual): number => {
 
 /**
  * Get offsets for all slides in a carousel
- * Used to determine positions for navigation
+ * With gap consideration for accurate positioning
  */
 export const getSlideOffsets = (
   virtual: HoloVirtual,
@@ -393,11 +477,18 @@ export const getSlideOffsets = (
   }
 
   const slides = Array.from(container.children) as HTMLElement[]
-  const offsets = slides.map(slide => {
+  const gap = virtual.item.gap || 0
+
+  // Calculate offsets with gap consideration
+  const offsets = slides.map((slide, index) => {
     if (virtual.io.orientation) {
-      return slide.offsetTop || 0
+      // For vertical orientation
+      const baseOffset = index * (virtual.item.actualHeight + gap)
+      return baseOffset || 0
     } else {
-      return slide.offsetLeft || 0
+      // For horizontal orientation
+      const baseOffset = index * (virtual.item.actualWidth + gap)
+      return baseOffset || 0
     }
   })
 

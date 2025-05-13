@@ -46,25 +46,25 @@ Unlike traditional event system, Cyre provides a comprehensive event architectur
 - Recuperation: minimize usage when system is idle
 - TimeKeeper. for precise timing and timed event
 
-### Cyre Channel
+### Core Features
 
 At its core, Cyre follows three main methods: call->action->on.
 
 - `on()`: Subscribe to events
-- `action()`: Configure event middleware and behavior
+- `action()`: Configure event and behavior middleware
 - `call()`: Trigger events
 
-each channel could have multiple cyre.on listeners/reducers and cyre.call dispatchers/triggers but unique cyre.action layer, channel.
+each channel could have multiple cyre.on reducers/listeners and cyre.call dispatchers/emitter but unique cyre.action layer per channel.
 
 ```typescript
 // Basic usage
-cyre.on('event_name', payload => {
-  console.log('Event received', payload)
+cyre.on('uber', payload => {
+  console.log('uber arrived at', payload)
 })
 
-cyre.action([{id: 'event_name', log: true}])
+cyre.action([{id: 'uber', log: true}])
 
-cyre.call('event_name', {data: 'example'})
+cyre.call('uber', 'location')
 ```
 
 ## Cyre Core Features
@@ -104,21 +104,6 @@ interface CyreInstance {
   getMetrics: (channelId: string) => TimekeeperMetrics
 }
 ```
-
-### Event Management
-
-- **Action-based event dispatching**: Define and configure events with specific behaviors
-- **Reactive state management**: Respond to state changes efficiently
-- **Automatic change detection**: Only process events when payloads change
-- **Smart surge protection**: Prevent event flooding with quantum breathing
-- **Event chaining**: Create complex workflows through intralinks
-
-### Quantum TimeKeeper
-
-- **High-precision timing control**: Accurate event timing with quantum breathing
-- **Intelligent recuperation**: System self-healing under stress
-- **Cross-platform**: Works in Node.js and Browsers
-- **Performance metrics**: Built-in performance tracking
 
 ## Event Management API
 

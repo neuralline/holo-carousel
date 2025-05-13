@@ -7,7 +7,7 @@ import {CyreLog} from 'cyre'
 /**
  * Handles horizontal transformations
  * Apply constraints and snap to grid functionality
- * Improved to handle all slides properly
+ * Improved to handle all slides properly with flex gap
  */
 export const transformX = (virtual: HoloVirtual): HoloVirtual => {
   // Check for valid dimensions to avoid NaN errors
@@ -56,7 +56,7 @@ export const transformX = (virtual: HoloVirtual): HoloVirtual => {
 /**
  * Handles vertical transformations
  * Apply constraints and snap to grid functionality
- * Improved to handle all slides properly
+ * Improved to handle all slides properly with flex gap
  */
 export const transformY = (virtual: HoloVirtual): HoloVirtual => {
   // Check for valid dimensions first to avoid NaN errors

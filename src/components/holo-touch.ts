@@ -16,8 +16,12 @@ interface TouchState {
   startY: number
   currentX: number
   currentY: number
+  lastX: number // Added to track direction more accurately
+  lastY: number // Added to track direction more accurately
   distanceX: number
   distanceY: number
+  directionX: number // Added to explicitly track direction (1 = right, -1 = left)
+  directionY: number // Added to explicitly track direction (1 = down, -1 = up)
   velocityX: number
   velocityY: number
   startTransformX: number
@@ -27,6 +31,7 @@ interface TouchState {
   multiplier: number
   orientation: boolean
   targetElement: HTMLElement | null
+  moved: boolean // Added to differentiate between taps and actual swipes
 }
 
 // Create shared touch state
@@ -37,8 +42,12 @@ const touchState: TouchState = {
   startY: 0,
   currentX: 0,
   currentY: 0,
+  lastX: 0,
+  lastY: 0,
   distanceX: 0,
   distanceY: 0,
+  directionX: 0,
+  directionY: 0,
   velocityX: 0,
   velocityY: 0,
   startTransformX: 0,
@@ -47,7 +56,8 @@ const touchState: TouchState = {
   startTime: 0,
   multiplier: 1.5,
   orientation: false,
-  targetElement: null
+  targetElement: null,
+  moved: false
 }
 
 /**
@@ -86,17 +96,25 @@ function registerTouchEventHandlers(): void {
         return
       }
 
+      // Get initial touch/mouse position
+      const clientX =
+        'touches' in event ? event.touches[0].clientX : event.clientX
+      const clientY =
+        'touches' in event ? event.touches[0].clientY : event.clientY
+
       // Update touch state
       touchState.id = id
       touchState.virtual = virtual
-      touchState.startX =
-        'touches' in event ? event.touches[0].clientX : event.clientX
-      touchState.startY =
-        'touches' in event ? event.touches[0].clientY : event.clientY
-      touchState.currentX = touchState.startX
-      touchState.currentY = touchState.startY
+      touchState.startX = clientX
+      touchState.startY = clientY
+      touchState.currentX = clientX
+      touchState.currentY = clientY
+      touchState.lastX = clientX
+      touchState.lastY = clientY
       touchState.distanceX = 0
       touchState.distanceY = 0
+      touchState.directionX = 0
+      touchState.directionY = 0
       touchState.velocityX = 0
       touchState.velocityY = 0
       touchState.startTransformX = virtual.transformX
@@ -105,6 +123,7 @@ function registerTouchEventHandlers(): void {
       touchState.startTime = performance.now()
       touchState.orientation = !!virtual.io.orientation
       touchState.targetElement = event.target as HTMLElement
+      touchState.moved = false
 
       // Disable transitions during drag
       _holo[id].updateStyle = 0
@@ -127,6 +146,14 @@ function registerTouchEventHandlers(): void {
 
     // Calculate distance moved
     const distanceX = state.startX - state.currentX
+
+    // Calculate direction explicitly by comparing with last position
+    // This is key to fixing the direction detection issues
+    if (state.currentX !== state.lastX) {
+      touchState.directionX = state.currentX < state.lastX ? 1 : -1 // 1 = right, -1 = left
+      touchState.lastX = state.currentX
+      touchState.moved = true // Mark that we've actually moved
+    }
 
     // Update touch state
     touchState.distanceX = distanceX
@@ -164,6 +191,13 @@ function registerTouchEventHandlers(): void {
 
     // Calculate distance moved
     const distanceY = state.startY - state.currentY
+
+    // Calculate direction explicitly
+    if (state.currentY !== state.lastY) {
+      touchState.directionY = state.currentY < state.lastY ? 1 : -1 // 1 = down, -1 = up
+      touchState.lastY = state.currentY
+      touchState.moved = true // Mark that we've actually moved
+    }
 
     // Update touch state
     touchState.distanceY = distanceY
@@ -222,10 +256,13 @@ function registerTouchEventHandlers(): void {
       targetElement: touchState.targetElement,
       distanceX: touchState.distanceX,
       distanceY: touchState.distanceY,
+      directionX: touchState.directionX,
+      directionY: touchState.directionY,
       velocityX: touchState.velocityX,
       velocityY: touchState.velocityY,
       orientation: touchState.orientation,
-      startTime: touchState.startTime
+      startTime: touchState.startTime,
+      moved: touchState.moved // Include the moved flag to distinguish real swipes
     }
 
     // Reset pressed state immediately to prevent further movement
@@ -261,6 +298,11 @@ function registerTouchEventHandlers(): void {
         : touchState.velocityX
       const absVelocity = Math.abs(velocity)
 
+      // Get explicit direction from tracked state
+      const direction = touchState.orientation
+        ? touchState.directionY
+        : touchState.directionX
+
       // Get event IDs from virtual state or use defaults
       const eventIds = virtual.eventIds || {
         nextSlide: `next_slide_${carouselId}`,
@@ -275,30 +317,32 @@ function registerTouchEventHandlers(): void {
       try {
         // CONDITIONAL INTRALINK: different actions based on gesture
 
-        // Case 1: Swipe/flick (higher velocity)
-        if (absVelocity > 0.8 && virtual.io.swipe !== 0) {
-          // Determine direction
-          if (
-            touchState.orientation
-              ? touchState.distanceY > 0
-              : touchState.distanceX > 0
-          ) {
-            // Swipe in positive direction (right/down)
+        // Case 1: Swipe/flick (higher velocity) - IMPROVED DETECTION
+        if (absVelocity > 0.5 && touchState.moved && virtual.io.swipe !== 0) {
+          // Log the swipe for debugging
+          CyreLog.info(
+            `Swipe detected: direction=${direction}, velocity=${absVelocity}`
+          )
+
+          // Determine direction using our explicitly tracked direction
+          if (direction > 0) {
+            // Swipe right/down (positive direction)
             return {
               id: eventIds.nextSlide,
               payload: virtual
             }
-          } else {
-            // Swipe in negative direction (left/up)
+          } else if (direction < 0) {
+            // Swipe left/up (negative direction)
             return {
               id: eventIds.prevSlide,
               payload: virtual
             }
           }
         }
-        // Case 2: It's a tap/click (short duration)
+        // Case 2: It's a tap/click (short duration, minimal movement)
         else if (
           isClickEvent(timeElapsed) &&
+          !touchState.moved && // Only count as click if we didn't really move
           targetElement &&
           virtual.io.onClick
         ) {

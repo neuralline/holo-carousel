@@ -1,52 +1,28 @@
 //src/types/interface.ts
 
-export interface HoloVirtual {
-  id: string
-  carousel: {
-    width?: number
-    height?: number
-  }
-  container: {
-    width?: number
-    height?: number
-  }
-  io: HoloIOOptions
-  title: string | null
-  description: string | null
-  duration: number
-  transitionTiming: string
-  transformX: number
-  transformY: number
-  transformZ: number
-  numberOfSlots: number
-  endOfSlide: number
-  endOfSlidePosition: number
-  item: {
-    max: number
-    width?: number
-    height?: number
-    min?: number
-  }
-  noOfChildren?: number
-  startNumber?: number
-  // ADDED: Store event IDs to ensure consistency
-  eventIds?: {
-    animate?: string
-    snap?: string
-    prevSlide?: string
-    nextSlide?: string
-    lastSlide?: string
-    firstSlide?: string
-    activate?: string
-    [key: string]: string | undefined
-  }
+/**
+ * Types and interfaces for Holo Carousel
+ */
+
+export interface HoloDimensions {
+  width: number
+  height: number
 }
 
-export interface HoloShadow {
-  carousel: HTMLElement
-  container: HTMLElement
+/**
+ * Extended item dimensions including gap information
+ */
+export interface HoloItemDimensions extends HoloDimensions {
+  max?: number
+  min?: number
+  actualWidth?: number // Width of the item without gap
+  actualHeight?: number // Height of the item without gap
+  gap?: number // Size of the gap between items
 }
 
+/**
+ * Input/Output options for carousel configuration
+ */
 export interface HoloIOOptions {
   id: string
   enabled: number
@@ -66,67 +42,84 @@ export interface HoloIOOptions {
   onDoubleClick: boolean
 }
 
+/**
+ * Virtual state representation of carousel
+ */
+export interface HoloVirtual {
+  id: string
+  carousel: Partial<HoloDimensions>
+  container: Partial<HoloDimensions>
+  io: HoloIOOptions
+  title: string | null
+  description: string | null
+  duration: number
+  transitionTiming: string
+  transformX: number
+  transformY: number
+  transformZ: number
+  numberOfSlots: number
+  endOfSlide: number
+  endOfSlidePosition: number
+  item: HoloItemDimensions
+  noOfChildren: number
+  startNumber: number
+  eventIds?: {
+    animate?: string
+    snap?: string
+    prevSlide?: string
+    nextSlide?: string
+    lastSlide?: string
+    firstSlide?: string
+    goToSlide?: string
+    activate?: string
+    refresh?: string
+    transform?: string
+    stateUpdate?: string
+    dimensionUpdate?: string
+    error?: string
+  }
+}
+
+/**
+ * Shadow state for DOM references
+ */
+export interface HoloShadow {
+  carousel: HTMLElement
+  container: HTMLElement
+}
+
+/**
+ * Combined state wrapper
+ */
+export interface HoloState {
+  virtual: HoloVirtual
+  shadow: HoloShadow
+}
+
+/**
+ * Holo instance with getters and setters
+ */
 export interface HoloInstance {
   virtual: HoloVirtual
   shadow: HoloShadow
-  getVirtual: HoloVirtual
-  getShadow: HoloShadow
-  getState: {
-    virtual: HoloVirtual
-    shadow: HoloShadow
+  get getVirtual(): HoloVirtual
+  get getShadow(): HoloShadow
+  get getState(): HoloState
+  get getDimensions(): {
+    car: {w: number; h: number}
+    con: {w: number; h: number; x: number; y: number; z: number}
   }
-  getDimensions: {
-    car: {
-      w: number
-      h: number
-    }
-    con: {
-      w: number
-      h: number
-      x: number
-      y: number
-      z: number
-    }
-  }
-  setState: HoloVirtual
-  setDimension: HoloVirtual
-  updateStyle: number
+  set setState(virtual: HoloVirtual)
+  set setDimension(virtual: HoloVirtual)
+  set updateStyle(on: number)
+  updateDOMTransform(): void
+  updateDOMDimensions(): void
+  updateTransitionStyle(enableTransition: boolean): void
 }
 
-export interface HoloTouchClass {
-  positionX: number
-  positionY: number
-  pressed: number
-  virtual: HoloVirtual
-  multiplier: number
-  touch: {
-    start: string
-    move: string
-    end: string
-    enter: string
-  }
-  targetHoloComponent: HTMLElement | number
-  TouchStartTimeStamp?: number
-  id?: string
-  currentX: number
-  currentY: number
-  snapShotWidth: number
-  snapShotHeight: number
-  distance?: number
-  _touchStart: (e: MouseEvent | TouchEvent, id: string) => void
-  _dragScrollHorizontal: (
-    e: MouseEvent | TouchEvent
-  ) => void | {ok: boolean; data: string}
-  _dragScrollVertical: (
-    e: MouseEvent | TouchEvent
-  ) => void | {ok: boolean; data: string}
-  _touchEnd: (e: MouseEvent | TouchEvent) => void | {ok: boolean; data: string}
-  focus: (e: MouseEvent | TouchEvent) => boolean | void
+/**
+ * Global database of carousel instances
+ */
+export interface HoloDatabase {
+  [key: string]: HoloInstance
 }
-
-export interface HoloDimensions {
-  width: number
-  height: number
-}
-
-export type HoloDatabase = Record<string, HoloInstance>

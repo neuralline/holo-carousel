@@ -32,7 +32,7 @@ export const goToNextSlide = (virtual: HoloVirtual): void => {
     return
   }
 
-  // Calculate slide width/height based on orientation
+  // Calculate slide width/height based on orientation, including gap
   const slideDimension = virtual.io.orientation
     ? virtual.item.height || 0
     : virtual.item.width || 0
@@ -104,7 +104,7 @@ export const goToPrevSlide = (virtual: HoloVirtual): void => {
     return
   }
 
-  // Calculate slide width/height based on orientation
+  // Calculate slide width/height based on orientation, including gap
   const slideDimension = virtual.io.orientation
     ? virtual.item.height || 0
     : virtual.item.width || 0
@@ -183,7 +183,7 @@ export const goToLastSlide = (virtual: HoloVirtual): void => {
     ? virtual.item.height || 0
     : virtual.item.width || 0
 
-  const maxIndex = (virtual.noOfChildren || 1) - 1
+  const maxIndex = (virtual.noOfChildren || 0) - 1
   const lastSlidePosition = -Math.abs(maxIndex * slideDimension)
 
   // Get absolute end position (from container dimensions)
@@ -215,7 +215,7 @@ export const goToSlide = (virtual: HoloVirtual, index: number): void => {
     return
   }
 
-  // Calculate slide width/height based on orientation
+  // Calculate slide width/height based on orientation, including gap
   const slideDimension = virtual.io.orientation
     ? virtual.item.height || 0
     : virtual.item.width || 0
@@ -228,7 +228,7 @@ export const goToSlide = (virtual: HoloVirtual, index: number): void => {
   }
 
   // IMPROVED: Check against max index
-  const maxIndex = (virtual.noOfChildren || 1) - 1
+  const maxIndex = (virtual.noOfChildren || 0) - 1
   const safeIndex = Math.min(Math.max(0, index), maxIndex)
 
   // Calculate the new transform position precisely
