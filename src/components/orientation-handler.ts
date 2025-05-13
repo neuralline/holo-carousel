@@ -1,12 +1,8 @@
-// src/components/orientation-handler.ts
+//src/components/orientation-handler.ts
 
 import type {HoloVirtual} from '../types/interface'
 import {snapToGrid} from '../libs/holo-essentials'
 import {CyreLog} from 'cyre'
-
-// src/components/orientation-handler.ts
-
-// src/components/orientation-handler.ts
 
 /**
  * Handles horizontal transformations
@@ -32,20 +28,16 @@ export const transformX = (virtual: HoloVirtual): HoloVirtual => {
         : virtual.transformX
   }
 
-  // IMPROVED: Make sure we have valid container and carousel dimensions
+  // CRITICAL: Make sure we have valid container and carousel dimensions
   const containerWidth = virtual.container.width || 0
   const carouselWidth = virtual.carousel.width || 0
 
   // Calculate the true end position based on the FULL container width
   const calculatedEndPosition = -Math.max(0, containerWidth - carouselWidth)
 
-  // If the calculated end position is different from stored, log it
-  if (calculatedEndPosition !== virtual.endOfSlidePosition) {
-    CyreLog.info(
-      `Updating end position for ${virtual.id}: ${virtual.endOfSlidePosition} -> ${calculatedEndPosition}`
-    )
-    updatedVirtual.endOfSlidePosition = calculatedEndPosition
-  }
+  // IMPORTANT FIX: Always update the end position if it's different
+  // This prevents position drift as we scroll
+  updatedVirtual.endOfSlidePosition = calculatedEndPosition
 
   // Apply boundary constraints
   if (updatedVirtual.transformX >= 0) {
@@ -86,20 +78,15 @@ export const transformY = (virtual: HoloVirtual): HoloVirtual => {
         : virtual.transformY
   }
 
-  // IMPROVED: Make sure we have valid container and carousel dimensions
+  // CRITICAL: Make sure we have valid container and carousel dimensions
   const containerHeight = virtual.container.height || 0
   const carouselHeight = virtual.carousel.height || 0
 
   // Calculate the true end position based on the FULL container height
   const calculatedEndPosition = -Math.max(0, containerHeight - carouselHeight)
 
-  // If the calculated end position is different from stored, update it
-  if (calculatedEndPosition !== virtual.endOfSlidePosition) {
-    CyreLog.info(
-      `Updating end position for ${virtual.id}: ${virtual.endOfSlidePosition} -> ${calculatedEndPosition}`
-    )
-    updatedVirtual.endOfSlidePosition = calculatedEndPosition
-  }
+  // IMPORTANT FIX: Always update the end position if it's different
+  updatedVirtual.endOfSlidePosition = calculatedEndPosition
 
   // Apply boundary constraints
   if (updatedVirtual.transformY >= 0) {
@@ -114,6 +101,7 @@ export const transformY = (virtual: HoloVirtual): HoloVirtual => {
 
   return updatedVirtual
 }
+
 /**
  * Handles horizontal transformations (lightweight version)
  * Only applies boundary constraints without snapping
@@ -124,6 +112,16 @@ export const transformXLite = (virtual: HoloVirtual): HoloVirtual => {
     ...virtual,
     transformY: 0
   }
+
+  // CRITICAL: Make sure we have valid container and carousel dimensions
+  const containerWidth = virtual.container.width || 0
+  const carouselWidth = virtual.carousel.width || 0
+
+  // Calculate the true end position based on the FULL container width
+  const calculatedEndPosition = -Math.max(0, containerWidth - carouselWidth)
+
+  // IMPORTANT FIX: Always update the end position if it's different
+  updatedVirtual.endOfSlidePosition = calculatedEndPosition
 
   // Apply boundary constraints only
   if (updatedVirtual.transformX >= 0) {
@@ -158,6 +156,16 @@ export const transformYLite = (virtual: HoloVirtual): HoloVirtual => {
     ...virtual,
     transformX: 0
   }
+
+  // CRITICAL: Make sure we have valid container and carousel dimensions
+  const containerHeight = virtual.container.height || 0
+  const carouselHeight = virtual.carousel.height || 0
+
+  // Calculate the true end position based on the FULL container height
+  const calculatedEndPosition = -Math.max(0, containerHeight - carouselHeight)
+
+  // IMPORTANT FIX: Always update the end position if it's different
+  updatedVirtual.endOfSlidePosition = calculatedEndPosition
 
   // Apply boundary constraints only
   if (updatedVirtual.transformY >= 0) {

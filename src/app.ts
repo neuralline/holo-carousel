@@ -20,18 +20,28 @@ import {
   initializeInstanceEvents
 } from './core/holo-events'
 import {handleTouchStart, initializeTouchSystem} from './components/holo-touch'
-import {getCurrentSlideIndex, updateActiveSlide} from './libs/holo-dom'
+import {
+  getCurrentSlideIndex,
+  updateActiveSlide,
+  forceRefreshAllCarousels,
+  calculateCarouselDimensions
+} from './libs/holo-dom'
 import {
   initializePerformanceMonitoring,
   getPerformanceHistory,
   optimizeCarousel
 } from './core/holo-performance'
-import {forceRefreshAllCarousels} from './libs/holo-dom-fix'
+import {
+  goToNextSlide,
+  goToPrevSlide,
+  goToFirstSlide,
+  goToLastSlide,
+  goToSlide
+} from './libs/holo-navigation'
 import {initializeDebugTools} from './libs/debug'
 
-/**
- * Update carousel options with proper validation
- */
+// Update the updateCarouselOptions function in app.ts
+
 function updateCarouselOptions(
   id: string,
   options: Partial<HoloIOOptions> = {}
@@ -52,6 +62,15 @@ function updateCarouselOptions(
       return acc
     }, {})
 
+    // CRITICAL FIX: Special handling for animation
+    if ('animate' in validOptions) {
+      // Clean up any existing animation event
+      if (virtual.eventIds?.animate) {
+        cyre.forget(virtual.eventIds.animate)
+        CyreLog.info(`Removed existing animation for carousel ${id}`)
+      }
+    }
+
     // Create updated options
     const updatedIO = {
       ...virtual.io,
@@ -64,8 +83,11 @@ function updateCarouselOptions(
       io: updatedIO
     }
 
-    // Initialize instance events with new options
+    // Re-initialize instance events with new options
+    // This will properly set up the animation if enabled
     initializeInstanceEvents(id, updatedIO)
+
+    CyreLog.info(`Carousel ${id} options updated successfully`)
 
     return {ok: true, data: updatedIO}
   } catch (error) {
@@ -208,13 +230,8 @@ function nextSlide(id: string): void {
     return
   }
 
-  const virtual = _holo[id].getVirtual
-
-  // Use event IDs from virtual state or fallback to standard naming
-  const eventId = virtual.eventIds?.nextSlide || `next_slide_${id}`
-
-  // Call next slide event
-  safeEventCall(eventId, virtual, EVENTS.NEXT_SLIDE)
+  // Use the navigation function from our shared library
+  goToNextSlide(_holo[id].getVirtual)
 }
 
 /**
@@ -226,13 +243,8 @@ function prevSlide(id: string): void {
     return
   }
 
-  const virtual = _holo[id].getVirtual
-
-  // Use event IDs from virtual state or fallback to standard naming
-  const eventId = virtual.eventIds?.prevSlide || `prev_slide_${id}`
-
-  // Call previous slide event
-  safeEventCall(eventId, virtual, EVENTS.PREV_SLIDE)
+  // Use the navigation function from our shared library
+  goToPrevSlide(_holo[id].getVirtual)
 }
 
 /**
@@ -244,13 +256,8 @@ function firstSlide(id: string): void {
     return
   }
 
-  const virtual = _holo[id].getVirtual
-
-  // Use event IDs from virtual state or fallback to standard naming
-  const eventId = virtual.eventIds?.firstSlide || `first_slide_${id}`
-
-  // Call first slide event
-  safeEventCall(eventId, virtual, EVENTS.FIRST_SLIDE)
+  // Use the navigation function from our shared library
+  goToFirstSlide(_holo[id].getVirtual)
 }
 
 /**
@@ -262,62 +269,21 @@ function lastSlide(id: string): void {
     return
   }
 
-  const virtual = _holo[id].getVirtual
-
-  // Use event IDs from virtual state or fallback to standard naming
-  const eventId = virtual.eventIds?.lastSlide || `last_slide_${id}`
-
-  // Call last slide event
-  safeEventCall(eventId, virtual, EVENTS.LAST_SLIDE)
+  // Use the navigation function from our shared library
+  goToLastSlide(_holo[id].getVirtual)
 }
 
 /**
  * Go to specific slide index
  */
-function goToSlide(id: string, index: number): void {
+function goToSlideById(id: string, index: number): void {
   if (!_holo[id]) {
     CyreLog.warn(`Carousel with ID ${id} not found`)
     return
   }
 
-  const virtual = _holo[id].getVirtual
-
-  // Check if we can access goToSlide event
-  if (virtual.eventIds?.goToSlide) {
-    // Use instance-specific event
-    safeEventCall(virtual.eventIds.goToSlide, {index}, EVENTS.GO_TO_SLIDE)
-    return
-  }
-
-  // Fallback to direct calculation if item width exists
-  if (virtual.item.width) {
-    // Calculate position based on index and orientation
-    const updatedVirtual = {
-      ...virtual,
-      transformX: virtual.io.orientation
-        ? 0
-        : -Math.abs(index * virtual.item.width),
-      transformY: virtual.io.orientation
-        ? -Math.abs(index * virtual.item.height)
-        : 0
-    }
-
-    // Call snap event
-    const snapEventId = virtual.eventIds?.snap || `snap_${id}`
-    safeEventCall(snapEventId, updatedVirtual, EVENTS.SNAP)
-    return
-  }
-
-  // Item width not calculated yet - warn and try to refresh
-  CyreLog.warn(`Carousel ${id} item width not calculated yet`)
-
-  // Try to refresh and retry
-  cyre.call(EVENTS.REFRESH_CAROUSEL, _holo[id].getState)
-  setTimeout(() => {
-    if (_holo[id]?.getVirtual?.item?.width) {
-      goToSlide(id, index)
-    }
-  }, 100)
+  // Use the navigation function from our shared library
+  goToSlide(_holo[id].getVirtual, index)
 }
 
 /**
@@ -326,8 +292,8 @@ function goToSlide(id: string, index: number): void {
 function getCurrentPosition(id: string): number {
   if (!_holo[id]) return 0
 
-  const virtual = _holo[id].getVirtual
-  return getCurrentSlideIndex(virtual)
+  // Use the slide index calculation from our shared library
+  return getCurrentSlideIndex(_holo[id].getVirtual)
 }
 
 /**
@@ -384,7 +350,7 @@ const Holo = {
   prev: prevSlide,
   first: firstSlide,
   last: lastSlide,
-  goTo: goToSlide,
+  goTo: goToSlideById,
 
   // System operations
   refresh: refreshAllCarousels,

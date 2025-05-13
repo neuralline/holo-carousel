@@ -3,11 +3,7 @@
 import {cyre, CyreLog} from 'cyre'
 import type {HoloVirtual} from '../types/interface'
 import {_holo} from '../libs/holo-essentials'
-import {
-  transformXLite,
-  transformYLite,
-  applyTransform
-} from './orientation-handler'
+import {applyTransform} from './orientation-handler'
 import {TOUCH_EVENTS, EVENTS} from '../config/holo-config'
 
 /**
@@ -52,20 +48,6 @@ const touchState: TouchState = {
   multiplier: 1.5,
   orientation: false,
   targetElement: null
-}
-
-/**
- * Calculates swipe speed from distance and time
- */
-const calculateSwipeSpeed = (distance: number, timeElapsed: number): number => {
-  return distance / (timeElapsed || 1)
-}
-
-/**
- * Determines if interaction was a click based on time elapsed
- */
-const isClickEvent = (timeElapsed: number): boolean => {
-  return timeElapsed < 300
 }
 
 /**
@@ -152,17 +134,20 @@ function registerTouchEventHandlers(): void {
     // Calculate new transform position
     const newTransformX = state.startTransformX - distanceX * state.multiplier
 
-    // Apply constraints and update virtual state (without transitions)
-    const updatedVirtual = transformXLite({
+    // Update virtual state with light transform (no snapping during drag)
+    const updatedVirtual = {
       ...state.virtual,
       transformX: newTransformX
-    })
+    }
+
+    // Apply constraints through transform function
+    const transformedVirtual = applyTransform(updatedVirtual, true)
 
     // Update state
-    _holo[state.id].setState = updatedVirtual
+    _holo[state.id].setState = transformedVirtual
 
     // Keep track of latest virtual state
-    touchState.virtual = updatedVirtual
+    touchState.virtual = transformedVirtual
 
     // Keep tracking velocity during drag
     return {
@@ -186,17 +171,20 @@ function registerTouchEventHandlers(): void {
     // Calculate new transform position
     const newTransformY = state.startTransformY - distanceY * state.multiplier
 
-    // Apply constraints and update virtual state (without transitions)
-    const updatedVirtual = transformYLite({
+    // Update virtual state with light transform (no snapping during drag)
+    const updatedVirtual = {
       ...state.virtual,
       transformY: newTransformY
-    })
+    }
+
+    // Apply constraints through transform function
+    const transformedVirtual = applyTransform(updatedVirtual, true)
 
     // Update state
-    _holo[state.id].setState = updatedVirtual
+    _holo[state.id].setState = transformedVirtual
 
     // Keep track of latest virtual state
-    touchState.virtual = updatedVirtual
+    touchState.virtual = transformedVirtual
 
     // Keep tracking velocity during drag
     return {
@@ -218,23 +206,36 @@ function registerTouchEventHandlers(): void {
     touchState.velocityY = calculateSwipeSpeed(state.distanceY, elapsed)
   })
 
-  // Touch end handler
+  // Touch end handler - CRITICAL FOR CORRECT BEHAVIOR
   cyre.on(TOUCH_EVENTS.TOUCH_END, () => {
-    if (!touchState.pressed || !touchState.id || !touchState.virtual) {
+    if (!touchState.id || !touchState.virtual) {
       return
     }
-
-    // Reset pressed state
-    touchState.pressed = false
 
     // Calculate time elapsed for click detection
     const timeElapsed = performance.now() - touchState.startTime
 
-    // Determine the appropriate action based on context
+    // Save a copy of relevant data before resetting state
+    const touchData = {
+      id: touchState.id,
+      virtual: touchState.virtual,
+      targetElement: touchState.targetElement,
+      distanceX: touchState.distanceX,
+      distanceY: touchState.distanceY,
+      velocityX: touchState.velocityX,
+      velocityY: touchState.velocityY,
+      orientation: touchState.orientation,
+      startTime: touchState.startTime
+    }
+
+    // Reset pressed state immediately to prevent further movement
+    touchState.pressed = false
+
+    // Process the end of touch interaction
     return {
       id: TOUCH_EVENTS.PROCESS_TOUCH_END,
       payload: {
-        touchState: {...touchState}, // Send a copy to avoid mutation issues
+        touchState: touchData,
         timeElapsed
       }
     }
@@ -243,7 +244,7 @@ function registerTouchEventHandlers(): void {
   // Process touch end - conditional intralink pattern
   cyre.on(
     TOUCH_EVENTS.PROCESS_TOUCH_END,
-    (payload: {touchState: TouchState; timeElapsed: number}) => {
+    (payload: {touchState: any; timeElapsed: number}) => {
       const {touchState, timeElapsed} = payload
 
       if (!touchState.id || !touchState.virtual) {
@@ -361,9 +362,9 @@ function registerTouchEventHandlers(): void {
   ])
 }
 
-//src/components/holo-touch.ts
-
-// In the registerDomEventListeners function:
+/**
+ * Register document-level event listeners for touch/mouse
+ */
 function registerDomEventListeners(): void {
   // Mouse/touch move handler
   const handlePointerMove = (e: MouseEvent | TouchEvent): void => {
@@ -404,11 +405,6 @@ function registerDomEventListeners(): void {
 
     // Call the touch end event
     cyre.call(TOUCH_EVENTS.TOUCH_END)
-
-    // Immediately reset pressed state to prevent further movement
-    touchState.pressed = false
-    touchState.id = null
-    touchState.virtual = null
   }
 
   // Add document-level listeners to catch events even if they occur outside the element
@@ -416,41 +412,9 @@ function registerDomEventListeners(): void {
   document.addEventListener('touchmove', handlePointerMove, {passive: false})
   document.addEventListener('mouseup', handlePointerEnd, {passive: false})
   document.addEventListener('touchend', handlePointerEnd, {passive: false})
-  document.addEventListener('touchcancel', handlePointerEnd, {passive: false}) // Add this for better touch handling
+  document.addEventListener('touchcancel', handlePointerEnd, {passive: false})
   document.addEventListener('mouseleave', handlePointerEnd, {passive: false})
 }
-
-// Also fix the TOUCH_END event handler:
-cyre.on(TOUCH_EVENTS.TOUCH_END, () => {
-  if (!touchState.id || !touchState.virtual) {
-    return
-  }
-
-  // Calculate time elapsed for click detection
-  const timeElapsed = performance.now() - touchState.startTime
-
-  // Save a copy of relevant data before resetting state
-  const touchData = {
-    id: touchState.id,
-    virtual: touchState.virtual,
-    targetElement: touchState.targetElement,
-    distanceX: touchState.distanceX,
-    distanceY: touchState.distanceY,
-    velocityX: touchState.velocityX,
-    velocityY: touchState.velocityY,
-    orientation: touchState.orientation,
-    startTime: touchState.startTime
-  }
-
-  // Process the end of touch interaction
-  return {
-    id: TOUCH_EVENTS.PROCESS_TOUCH_END,
-    payload: {
-      touchState: touchData,
-      timeElapsed
-    }
-  }
-})
 
 /**
  * Public handler for touch/mouse start events
@@ -463,4 +427,18 @@ export const handleTouchStart = (
 
   // Call the touch start event with event info and carousel ID
   cyre.call(TOUCH_EVENTS.TOUCH_START, {event, id})
+}
+
+/**
+ * Calculates swipe speed from distance and time
+ */
+const calculateSwipeSpeed = (distance: number, timeElapsed: number): number => {
+  return distance / (timeElapsed || 1)
+}
+
+/**
+ * Determines if interaction was a click based on time elapsed
+ */
+const isClickEvent = (timeElapsed: number): boolean => {
+  return timeElapsed < 300
 }

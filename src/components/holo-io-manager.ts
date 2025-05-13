@@ -3,7 +3,7 @@
 import {cyre, CyreLog} from 'cyre'
 import type {HoloVirtual, HoloShadow} from '../types/interface'
 import {handleTouchStart} from './holo-touch'
-import {wheeler} from '../libs/holo-essentials'
+import {handleWheel} from '../libs/holo-navigation'
 import {initializeInstanceEvents} from '../core/holo-events'
 import {EVENTS} from '../config/holo-config'
 
@@ -61,6 +61,9 @@ const setupDomEventHandlers = (
 
   CyreLog.info(`Setting up DOM handlers for carousel ${virtual.id}`)
 
+  // Get event IDs from virtual
+  const eventIds = virtual.eventIds || {}
+
   // Mouse drag handler
   if (virtual.io.drag) {
     const handleMouseDown = (e: MouseEvent): void => {
@@ -87,11 +90,8 @@ const setupDomEventHandlers = (
 
           CyreLog.debug(`Slide ${index} clicked in carousel ${virtual.id}`)
 
-          if (virtual.eventIds?.activate) {
-            cyre.call(virtual.eventIds.activate, [
-              slide as HTMLElement,
-              virtual
-            ])
+          if (eventIds.activate) {
+            cyre.call(eventIds.activate, [slide as HTMLElement, virtual])
           }
         },
         {passive: false}
@@ -117,16 +117,16 @@ const setupDomEventHandlers = (
 
   // Mouse wheel handler
   if (virtual.io.wheel) {
-    const handleWheel = (e: WheelEvent): void => {
+    const wheelHandler = (e: WheelEvent): void => {
       e.preventDefault()
       e.stopPropagation()
-      wheeler(e, virtual.id)
+      handleWheel(e, virtual.id)
 
       // Log for debugging
       CyreLog.debug(`Wheel event detected on carousel ${virtual.id}`)
     }
 
-    shadow.carousel.addEventListener('wheel', handleWheel, {passive: false})
+    shadow.carousel.addEventListener('wheel', wheelHandler, {passive: false})
   }
 
   // Navigation buttons
@@ -137,8 +137,8 @@ const setupDomEventHandlers = (
     prevButton.addEventListener('click', e => {
       e.preventDefault()
       e.stopPropagation()
-      if (virtual.eventIds?.prevSlide) {
-        cyre.call(virtual.eventIds.prevSlide, virtual)
+      if (eventIds.prevSlide) {
+        cyre.call(eventIds.prevSlide, virtual)
       }
     })
   }
@@ -147,15 +147,15 @@ const setupDomEventHandlers = (
     nextButton.addEventListener('click', e => {
       e.preventDefault()
       e.stopPropagation()
-      if (virtual.eventIds?.nextSlide) {
-        cyre.call(virtual.eventIds.nextSlide, virtual)
+      if (eventIds.nextSlide) {
+        cyre.call(eventIds.nextSlide, virtual)
       }
     })
   }
 
   // Animation handler - start animation if enabled
-  if (virtual.io.animate && virtual.eventIds?.animate) {
-    cyre.call(virtual.eventIds.animate, virtual)
+  if (virtual.io.animate && eventIds.animate) {
+    cyre.call(eventIds.animate, virtual)
   }
 
   // Resize handler

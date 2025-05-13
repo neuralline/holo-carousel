@@ -22,72 +22,55 @@ export const isVisibilityAvailable = (): boolean => {
 export const getElementDimensions = (element: HTMLElement): HoloDimensions => {
   if (!element) return {width: 0, height: 0}
 
-  // Try to get dimensions from inline styles first (most reliable)
-  let width = 0
-  let height = 0
+  try {
+    // Try to get dimensions from inline styles first (most reliable)
+    let width = 0
+    let height = 0
 
-  // Get from inline style if available
-  if (element.style.width && element.style.height) {
-    width = parseInt(element.style.width, 10) || 0
-    height = parseInt(element.style.height, 10) || 0
-
-    if (width > 0 && height > 0) {
-      CyreLog.info(`Using inline dimensions: ${width}x${height}`)
+    // Get from inline style if available
+    if (element.style.width && element.style.height) {
+      width = parseInt(element.style.width, 10) || 0
+      height = parseInt(element.style.height, 10) || 0
     }
-  }
 
-  // If inline styles didn't work, try getBoundingClientRect
-  if (width === 0 || height === 0) {
-    const rect = element.getBoundingClientRect()
-    width = rect.width || 0
-    height = rect.height || 0
-
-    if (width > 0 && height > 0) {
-      CyreLog.info(`Using getBoundingClientRect dimensions: ${width}x${height}`)
+    // If inline styles didn't work, try getBoundingClientRect
+    if (width === 0 || height === 0) {
+      const rect = element.getBoundingClientRect()
+      width = rect.width || 0
+      height = rect.height || 0
     }
-  }
 
-  // If still zero, try offsetWidth/offsetHeight
-  if (width === 0 || height === 0) {
-    width = element.offsetWidth || 0
-    height = element.offsetHeight || 0
-
-    if (width > 0 && height > 0) {
-      CyreLog.info(`Using offset dimensions: ${width}x${height}`)
+    // If still zero, try offsetWidth/offsetHeight
+    if (width === 0 || height === 0) {
+      width = element.offsetWidth || 0
+      height = element.offsetHeight || 0
     }
-  }
 
-  // Get margins from computed style
-  const style = window.getComputedStyle(element)
-  const marginLeft = parseInt(style.marginLeft, 10) || 0
-  const marginRight = parseInt(style.marginRight, 10) || 0
-  const marginTop = parseInt(style.marginTop, 10) || 0
-  const marginBottom = parseInt(style.marginBottom, 10) || 0
+    // Get margins from computed style
+    const style = window.getComputedStyle(element)
+    const marginLeft = parseInt(style.marginLeft, 10) || 0
+    const marginRight = parseInt(style.marginRight, 10) || 0
+    const marginTop = parseInt(style.marginTop, 10) || 0
+    const marginBottom = parseInt(style.marginBottom, 10) || 0
 
-  // Add margins to dimensions
-  width += marginLeft + marginRight
-  height += marginTop + marginBottom
+    // Add margins to dimensions
+    width += marginLeft + marginRight
+    height += marginTop + marginBottom
 
-  // Final safeguard against zero or NaN values
-  if (width <= 0 || isNaN(width)) {
-    CyreLog.warn(`Invalid width calculated: ${width}, using default of 200px`)
-    width = 200 // Default fallback width
-  }
+    // Final safeguard against zero or NaN values
+    if (width <= 0 || isNaN(width)) width = 200
+    if (height <= 0 || isNaN(height)) height = 200
 
-  if (height <= 0 || isNaN(height)) {
-    CyreLog.warn(`Invalid height calculated: ${height}, using default of 200px`)
-    height = 200 // Default fallback height
-  }
-
-  return {
-    width,
-    height
+    return {width, height}
+  } catch (error) {
+    CyreLog.error('Error calculating element dimensions:', error)
+    return {width: 200, height: 200} // Fallback dimensions
   }
 }
 
 /**
  * Calculate carousel dimensions with improved robustness
- * This is the primary dimension calculation function
+ * This is the main dimension calculation function
  */
 export const calculateCarouselDimensions = (
   virtual: HoloVirtual,
@@ -109,11 +92,11 @@ export const calculateCarouselDimensions = (
       return null
     }
 
-    // Store original styles
+    // Store original styles to restore later
     const originalCarouselStyle = shadow.carousel.style.cssText
     const originalContainerStyle = shadow.container.style.cssText
 
-    // Force visibility for measurement (but don't change position to avoid layout shifts)
+    // Force visibility for measurement
     shadow.carousel.style.visibility = 'visible'
     shadow.carousel.style.display = 'block'
     shadow.container.style.visibility = 'visible'
@@ -149,7 +132,7 @@ export const calculateCarouselDimensions = (
       window.innerHeight || 768
     )
 
-    // Get dimensions of each slide with margins included
+    // IMPROVED: More accurate calculation of total width and max slide dimensions
     let totalWidth = 0
     let totalHeight = 0
     let maxSlideWidth = 0
@@ -165,20 +148,31 @@ export const calculateCarouselDimensions = (
       // Force recalculation
       void slide.offsetHeight
 
-      // Get dimensions with margins
-      const dimensions = getElementDimensions(slide)
+      // Get computed style to include margins
+      const style = window.getComputedStyle(slide)
+      const marginLeft = parseInt(style.marginLeft) || 0
+      const marginRight = parseInt(style.marginRight) || 0
+      const marginTop = parseInt(style.marginTop) || 0
+      const marginBottom = parseInt(style.marginBottom) || 0
+
+      // Calculate slide dimensions with margins
+      const slideWidth = slide.offsetWidth + marginLeft + marginRight
+      const slideHeight = slide.offsetHeight + marginTop + marginBottom
 
       // Track maximum dimensions
-      maxSlideWidth = Math.max(maxSlideWidth, dimensions.width)
-      maxSlideHeight = Math.max(maxSlideHeight, dimensions.height)
+      maxSlideWidth = Math.max(maxSlideWidth, slideWidth)
+      maxSlideHeight = Math.max(maxSlideHeight, slideHeight)
 
-      // Add to total dimensions
-      totalWidth += dimensions.width
-      totalHeight += dimensions.height
+      // Add to total dimensions - CRITICAL for scrolling all slides
+      totalWidth += slideWidth
+      totalHeight += slideHeight
 
       // Restore original style
       slide.style.cssText = originalSlideStyle
     })
+
+    // Add safety margin to ensure last slide is fully visible
+    totalWidth += maxSlideWidth * 0.2 // Add 20% of a slide width as padding
 
     // Fallback if dimensions are still zero
     if (maxSlideWidth === 0) maxSlideWidth = 200
@@ -186,8 +180,7 @@ export const calculateCarouselDimensions = (
     if (totalWidth === 0) totalWidth = maxSlideWidth * slides.length
     if (totalHeight === 0) totalHeight = maxSlideHeight * slides.length
 
-    // Calculate how many items can fit in view - this is just for display
-    // purposes, not to limit the actual number of slides
+    // Calculate how many items can fit in view
     const numberOfSlots = Math.min(
       Math.max(1, Math.floor(parentWidth / maxSlideWidth)),
       virtual.item.max || 10
@@ -202,17 +195,17 @@ export const calculateCarouselDimensions = (
       ? Math.min(numberOfSlots * maxSlideHeight, parentHeight)
       : maxSlideHeight
 
-    // Calculate container dimensions to include ALL slides
+    // CRITICAL FIX: Calculate container dimensions to include ALL slides
     // This ensures all slides are accessible by scrolling
     const containerWidth = virtual.io.orientation
       ? parentWidth // For vertical orientation, container width is just parent width
-      : totalWidth // For horizontal, it's the sum of all slide widths
+      : totalWidth // For horizontal, it's the ACCURATE sum of all slide widths
 
     const containerHeight = virtual.io.orientation
       ? totalHeight // For vertical orientation, container height is the sum of all slide heights
       : maxSlideHeight // For horizontal, it's just the maximum slide height
 
-    // Calculate end position (how far carousel can scroll)
+    // CRITICAL FIX: Calculate end position to ensure all slides are accessible
     const endOfSlidePosition = virtual.io.orientation
       ? -Math.max(0, containerHeight - carouselHeight)
       : -Math.max(0, containerWidth - carouselWidth)
@@ -230,7 +223,8 @@ export const calculateCarouselDimensions = (
       carouselHeight,
       containerWidth,
       containerHeight,
-      endOfSlidePosition
+      endOfSlidePosition,
+      totalWidth
     })
 
     // Create updated virtual state with new dimensions
@@ -261,7 +255,6 @@ export const calculateCarouselDimensions = (
 
 /**
  * Force calculation of carousel dimensions and retry if needed
- * Useful when first calculation fails
  */
 export const forceCalculateCarouselDimensions = (
   id: string
@@ -371,9 +364,15 @@ export const getCurrentSlideIndex = (virtual: HoloVirtual): number => {
   }
 
   // Calculate based on transform position and item width/height
-  return virtual.io.orientation
-    ? Math.abs(Math.round(virtual.transformY / (virtual.item.height || 1)))
-    : Math.abs(Math.round(virtual.transformX / (virtual.item.width || 1)))
+  const slideDimension = virtual.io.orientation
+    ? virtual.item.height || 1
+    : virtual.item.width || 1
+
+  const position = virtual.io.orientation
+    ? Math.abs(virtual.transformY)
+    : Math.abs(virtual.transformX)
+
+  return Math.round(position / slideDimension)
 }
 
 /**

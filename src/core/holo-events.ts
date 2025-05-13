@@ -4,12 +4,21 @@ import {cyre, CyreLog} from 'cyre'
 import type {HoloVirtual, HoloShadow} from '../types/interface'
 import {EVENTS, ANIMATION} from '../config/holo-config'
 import {_holo} from '../libs/holo-essentials'
-import {transformX, transformY} from '../components/orientation-handler'
 import {
   calculateCarouselDimensions,
-  isVisibilityAvailable
+  isVisibilityAvailable,
+  getCurrentSlideIndex
 } from '../libs/holo-dom'
-import {calculateCarouselDimensionsFixed} from '../libs/holo-dom-fix'
+import {applyTransform} from '../components/orientation-handler'
+import {
+  goToFirstSlide,
+  goToLastSlide,
+  goToNextSlide,
+  goToPrevSlide,
+  goToSlide,
+  activateSlide,
+  animateCarousel
+} from '../libs/holo-navigation'
 
 /**
  * Creates instance-specific event IDs for this carousel
@@ -217,8 +226,8 @@ function registerDimensionEvents() {
     }
 
     try {
-      // Try the fixed calculation method first
-      const updatedVirtual = calculateCarouselDimensionsFixed(virtual, shadow)
+      // Calculate dimensions
+      const updatedVirtual = calculateCarouselDimensions(virtual, shadow)
 
       if (updatedVirtual) {
         // Store updated dimensions
@@ -231,21 +240,7 @@ function registerDimensionEvents() {
         }
       }
 
-      // If that failed, try the original method as fallback
-      const fallbackVirtual = calculateCarouselDimensions(virtual, shadow)
-
-      if (fallbackVirtual) {
-        // Store updated dimensions
-        _holo[id].setDimension = {...fallbackVirtual}
-
-        // Continue to position carousel
-        return {
-          id: EVENTS.SNAP_TO_POSITION,
-          payload: fallbackVirtual
-        }
-      }
-
-      // If we're still here, neither method worked - retry with a delay
+      // If we're still here, retry with a delay
       setTimeout(() => {
         cyre.call(EVENTS.INIT_DIMENSIONS, {id})
       }, 300)
@@ -282,49 +277,32 @@ function registerDimensionEvents() {
         // Reset container styles for fresh measurement
         shadow.container.setAttribute('style', '')
 
-        // Use the fixed calculation method first
-        const updatedVirtual = calculateCarouselDimensionsFixed(virtual, shadow)
+        // Calculate dimensions
+        const updatedVirtual = calculateCarouselDimensions(virtual, shadow)
 
         if (updatedVirtual) {
           // Store updated state
           _holo[virtual.id].setDimension = {...updatedVirtual}
+
+          // Continue the event chain to positioning
+          return {
+            id: EVENTS.SNAP_TO_POSITION,
+            payload: updatedVirtual
+          }
         } else {
-          // If fixed method fails, try original method
-          const fallbackVirtual = calculateCarouselDimensions(virtual, shadow)
+          // If calculation fails, retry with delay
+          setTimeout(() => {
+            cyre.call(EVENTS.REFRESH_CAROUSEL, _holo[virtual.id].getState)
+          }, 300)
 
-          if (!fallbackVirtual) {
-            // If both methods fail, report error and retry with delay
-            setTimeout(() => {
-              // One last attempt with delay
-              const delayedVirtual = calculateCarouselDimensionsFixed(
-                virtual,
-                shadow
-              )
-              if (delayedVirtual) {
-                _holo[virtual.id].setDimension = {...delayedVirtual}
-                // Continue with the updated state
-                cyre.call(EVENTS.SNAP_TO_POSITION, delayedVirtual)
-              }
-            }, 300)
-
-            return {
-              id: EVENTS.ERROR_HANDLER,
-              payload: {
-                source: 'refresh_carousel',
-                error: 'Failed to calculate dimensions',
-                id: virtual.id
-              }
+          return {
+            id: EVENTS.ERROR_HANDLER,
+            payload: {
+              source: 'refresh_carousel',
+              error: 'Failed to calculate dimensions',
+              id: virtual.id
             }
           }
-
-          // Store updated state from fallback
-          _holo[virtual.id].setDimension = {...fallbackVirtual}
-        }
-
-        // Continue the event chain to positioning
-        return {
-          id: EVENTS.SNAP_TO_POSITION,
-          payload: updatedVirtual || virtual
         }
       } catch (error) {
         return {
@@ -358,11 +336,6 @@ function registerDimensionEvents() {
  */
 function registerNavigationEvents() {
   // Go to next slide
-  //src/core/holo-events.ts
-
-  // Update in the registerNavigationEvents function:
-
-  // Go to next slide
   cyre.on(EVENTS.NEXT_SLIDE, (virtual: HoloVirtual) => {
     if (!virtual?.id) {
       return {
@@ -374,76 +347,9 @@ function registerNavigationEvents() {
       }
     }
 
-    // Check if at the end
-    if (virtual.endOfSlide === -1 && !virtual.io.loop) {
-      // Already at the end and no loop configured
-      return
-    }
-
-    // Loop back to start if needed
-    if (virtual.endOfSlide === -1 && virtual.io.loop) {
-      return {
-        id: EVENTS.FIRST_SLIDE,
-        payload: virtual
-      }
-    }
-
-    // Calculate slide width/height based on orientation
-    const slideDimension = virtual.io.orientation
-      ? virtual.item.height || 0
-      : virtual.item.width || 0
-
-    if (!slideDimension) {
-      return {
-        id: EVENTS.ERROR_HANDLER,
-        payload: {
-          source: 'next_slide',
-          error: `Carousel ${virtual.id} item ${
-            virtual.io.orientation ? 'height' : 'width'
-          } not calculated yet`,
-          id: virtual.id
-        }
-      }
-    }
-
-    // IMPROVED: Calculate the current position and determine next slide position
-    const currentPosition = virtual.io.orientation
-      ? virtual.transformY
-      : virtual.transformX
-
-    const currentIndex = Math.round(Math.abs(currentPosition) / slideDimension)
-    const nextIndex = currentIndex + 1
-
-    // Calculate the new transform position
-    const newTransform = -Math.abs(nextIndex * slideDimension)
-
-    // Ensure we don't go beyond limits
-    const minPosition = virtual.io.orientation
-      ? virtual.endOfSlidePosition
-      : virtual.endOfSlidePosition
-
-    const newPosition = Math.max(newTransform, minPosition)
-
-    // Create updated virtual state with new position
-    const updatedVirtual = {
-      ...virtual,
-      transformX: virtual.io.orientation ? virtual.transformX : newPosition,
-      transformY: virtual.io.orientation ? newPosition : virtual.transformY
-    }
-
-    // Log navigation for debugging
-    CyreLog.info(
-      `Navigating to next slide: ${currentIndex} -> ${nextIndex}, position: ${currentPosition} -> ${newPosition}`
-    )
-
-    // Go to snap position
-    return {
-      id: EVENTS.SNAP_TO_POSITION,
-      payload: updatedVirtual
-    }
+    // Use centralized navigation function
+    goToNextSlide(virtual)
   })
-
-  // Same improvements needed for PREV_SLIDE and GO_TO_SLIDE events
 
   // Go to previous slide
   cyre.on(EVENTS.PREV_SLIDE, (virtual: HoloVirtual) => {
@@ -457,53 +363,8 @@ function registerNavigationEvents() {
       }
     }
 
-    // Check if at the beginning
-    if (virtual.endOfSlide === 1 && !virtual.io.loop) {
-      return
-    }
-
-    // Loop to end if needed
-    if (virtual.endOfSlide === 1 && virtual.io.loop) {
-      return {
-        id: EVENTS.LAST_SLIDE,
-        payload: virtual
-      }
-    }
-
-    // Calculate slide width/height based on orientation
-    const slideDimension = virtual.io.orientation
-      ? virtual.item.height || 0
-      : virtual.item.width || 0
-
-    if (!slideDimension) {
-      return {
-        id: EVENTS.ERROR_HANDLER,
-        payload: {
-          source: 'prev_slide',
-          error: `Carousel ${virtual.id} item ${
-            virtual.io.orientation ? 'height' : 'width'
-          } not calculated yet`,
-          id: virtual.id
-        }
-      }
-    }
-
-    // Create updated virtual state with new position
-    const updatedVirtual = {
-      ...virtual,
-      transformX: virtual.io.orientation
-        ? virtual.transformX
-        : virtual.transformX + slideDimension,
-      transformY: virtual.io.orientation
-        ? virtual.transformY + slideDimension
-        : virtual.transformY
-    }
-
-    // Go to snap position
-    return {
-      id: EVENTS.SNAP_TO_POSITION,
-      payload: updatedVirtual
-    }
+    // Use centralized navigation function
+    goToPrevSlide(virtual)
   })
 
   // Go to first slide
@@ -518,19 +379,8 @@ function registerNavigationEvents() {
       }
     }
 
-    // Create updated virtual state with start position
-    const updatedVirtual = {
-      ...virtual,
-      transformX: 0,
-      transformY: 0,
-      endOfSlide: 1 // At the start
-    }
-
-    // Go to snap position
-    return {
-      id: EVENTS.SNAP_TO_POSITION,
-      payload: updatedVirtual
-    }
+    // Use centralized navigation function
+    goToFirstSlide(virtual)
   })
 
   // Go to last slide
@@ -545,30 +395,8 @@ function registerNavigationEvents() {
       }
     }
 
-    if (virtual.endOfSlidePosition === undefined) {
-      return {
-        id: EVENTS.ERROR_HANDLER,
-        payload: {
-          source: 'last_slide',
-          error: `Carousel ${virtual.id} end position not calculated`,
-          id: virtual.id
-        }
-      }
-    }
-
-    // Create updated virtual state with end position
-    const updatedVirtual = {
-      ...virtual,
-      transformX: virtual.io.orientation ? 0 : virtual.endOfSlidePosition,
-      transformY: virtual.io.orientation ? virtual.endOfSlidePosition : 0,
-      endOfSlide: -1 // At the end
-    }
-
-    // Go to snap position
-    return {
-      id: EVENTS.SNAP_TO_POSITION,
-      payload: updatedVirtual
-    }
+    // Use centralized navigation function
+    goToLastSlide(virtual)
   })
 
   // Go to specific slide index
@@ -585,42 +413,8 @@ function registerNavigationEvents() {
         }
       }
 
-      const {virtual, index} = payload
-
-      // Calculate slide width/height based on orientation
-      const slideDimension = virtual.io.orientation
-        ? virtual.item.height || 0
-        : virtual.item.width || 0
-
-      if (!slideDimension) {
-        return {
-          id: EVENTS.ERROR_HANDLER,
-          payload: {
-            source: 'go_to_slide',
-            error: `Carousel ${virtual.id} item ${
-              virtual.io.orientation ? 'height' : 'width'
-            } not calculated yet`,
-            id: virtual.id
-          }
-        }
-      }
-
-      // Create updated virtual state with calculated position
-      const updatedVirtual = {
-        ...virtual,
-        transformX: virtual.io.orientation
-          ? 0
-          : -Math.abs(index * slideDimension),
-        transformY: virtual.io.orientation
-          ? -Math.abs(index * slideDimension)
-          : 0
-      }
-
-      // Go to snap position
-      return {
-        id: EVENTS.SNAP_TO_POSITION,
-        payload: updatedVirtual
-      }
+      // Use centralized navigation function
+      goToSlide(payload.virtual, payload.index)
     }
   )
 
@@ -638,80 +432,24 @@ function registerNavigationEvents() {
       }
     }
 
-    // Get offset positions of all slides
-    const {offsets, selectedIndex} = getSlideOffsets(virtual, element)
-
-    if (selectedIndex === -1) {
-      return {
-        id: EVENTS.ERROR_HANDLER,
-        payload: {
-          source: 'activate',
-          error: 'Could not determine slide index',
-          id: virtual.id
-        }
-      }
-    }
-
-    // Update active class
-    document.querySelectorAll(`#${virtual.id} .holo`).forEach(el => {
-      el.classList.remove('active')
-    })
-    element.classList.add('active')
-
-    // Create updated virtual state with new position based on offset
-    const updatedVirtual = {
-      ...virtual,
-      transformX: virtual.io.orientation
-        ? virtual.transformX
-        : -Math.abs(offsets[selectedIndex]),
-      transformY: virtual.io.orientation
-        ? -Math.abs(offsets[selectedIndex])
-        : virtual.transformY
-    }
-
-    // Go to snap position
-    return {
-      id: EVENTS.SNAP_TO_POSITION,
-      payload: updatedVirtual
-    }
+    // Use centralized navigation function
+    activateSlide(element, virtual)
   })
 
   // Auto-animate forward
   cyre.on(EVENTS.ANIMATE_FORWARD, (virtual: HoloVirtual) => {
     if (!virtual || !virtual.id) return
 
-    if (virtual.endOfSlide === -1 && virtual.io.loop) {
-      // Loop back to start when at the end
-      return {
-        id: EVENTS.FIRST_SLIDE,
-        payload: virtual
-      }
-    } else {
-      // Go to next slide
-      return {
-        id: EVENTS.NEXT_SLIDE,
-        payload: virtual
-      }
-    }
+    // Use centralized animation function with forward direction
+    animateCarousel(virtual, true)
   })
 
   // Auto-animate backward
   cyre.on(EVENTS.ANIMATE_BACKWARD, (virtual: HoloVirtual) => {
     if (!virtual || !virtual.id) return
 
-    if (virtual.endOfSlide === 1 && virtual.io.loop) {
-      // Loop to end when at the start
-      return {
-        id: EVENTS.LAST_SLIDE,
-        payload: virtual
-      }
-    } else {
-      // Go to previous slide
-      return {
-        id: EVENTS.PREV_SLIDE,
-        payload: virtual
-      }
-    }
+    // Use centralized animation function with backward direction
+    animateCarousel(virtual, false)
   })
 }
 
@@ -778,10 +516,8 @@ function registerTransformEvents() {
       // Update style to enable transitions
       _holo[virtual.id].updateStyle = 1
 
-      // Apply orientation-specific transforms
-      const transformedVirtual = virtual.io.orientation
-        ? transformY(virtual)
-        : transformX(virtual)
+      // Apply orientation-specific transforms - THIS IS CRITICAL
+      const transformedVirtual = applyTransform(virtual)
 
       // Safety check for NaN values
       if (
@@ -830,19 +566,7 @@ function registerTransformEvents() {
         id: EVENTS.TRANSFORM_COMPLETE,
         payload: {
           id: virtual.id,
-          position: virtual.io.orientation
-            ? Math.abs(
-                Math.round(
-                  transformedVirtual.transformY /
-                    (transformedVirtual.item.height || 1)
-                )
-              )
-            : Math.abs(
-                Math.round(
-                  transformedVirtual.transformX /
-                    (transformedVirtual.item.width || 1)
-                )
-              )
+          position: getCurrentSlideIndex(transformedVirtual)
         }
       }
     } catch (error) {
@@ -1044,6 +768,8 @@ function registerGlobalActions() {
   ])
 }
 
+// Update this function in holo-events.ts
+
 /**
  * Initialize event handlers for a specific carousel instance
  * Creates custom event IDs for this instance and links them to global handlers
@@ -1073,8 +799,19 @@ export const initializeInstanceEvents = (
     eventIds
   }
 
+  // IMPORTANT: Check for existing event handlers before registering new ones
+  // Prevents duplicate subscriptions when updating options
+
+  // Clean up any existing event handlers with these IDs first
+  Object.values(eventIds).forEach(eventId => {
+    if (eventId) {
+      cyre.forget(eventId)
+    }
+  })
+
   // Register instance-specific handlers that forward to global ones
   cyre.on(eventIds.animate, payload => {
+    CyreLog.info(`Animation event triggered for ${id}`)
     return {
       id:
         virtual.io.animateDirection > 0
@@ -1158,8 +895,8 @@ export const initializeInstanceEvents = (
     {
       id: eventIds.animate,
       interval: options.duration || ANIMATION.DURATION,
-      repeat: options.loop || 0,
-      log: false
+      repeat: options.animate ? true : 0, // FIXED: Use true for infinite looping if animate is enabled
+      log: true // Enable logging for animation events
     },
     {
       id: eventIds.snap,
@@ -1196,9 +933,10 @@ export const initializeInstanceEvents = (
     }
   ])
 
-  // Start auto-animation if enabled
-  if (options.animate && options.duration) {
-    cyre.call(eventIds.animate, virtual)
+  // FIXED: Start auto-animation only if specifically enabled
+  if (options.animate && options.animate !== 0) {
+    CyreLog.info(`Starting animation for carousel ${id}`)
+    cyre.call(eventIds.animate, _holo[id].getVirtual)
   }
 
   // Start performance monitoring if enabled
@@ -1220,39 +958,4 @@ export const initializeInstanceEvents = (
     // Start monitoring
     cyre.call(`performance_monitor_${id}`)
   }
-}
-
-/**
- * Get offsets for all slides in a carousel
- * Used to determine positions for navigation
- */
-export const getSlideOffsets = (
-  virtual: HoloVirtual,
-  selectedElement?: HTMLElement
-): {offsets: number[]; selectedIndex: number} => {
-  if (!virtual?.id) {
-    return {offsets: [], selectedIndex: -1}
-  }
-
-  const container = document.querySelector(`#${virtual.id} .holo-container`)
-  if (!container) {
-    return {offsets: [], selectedIndex: -1}
-  }
-
-  const slides = Array.from(container.children) as HTMLElement[]
-  const offsets = slides.map(slide => {
-    if (virtual.io.orientation) {
-      return slide.offsetTop || 0
-    } else {
-      return slide.offsetLeft || 0
-    }
-  })
-
-  // Find the index of the selected element
-  let selectedIndex = -1
-  if (selectedElement) {
-    selectedIndex = slides.findIndex(slide => slide === selectedElement)
-  }
-
-  return {offsets, selectedIndex}
 }
