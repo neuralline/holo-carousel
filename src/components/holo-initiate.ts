@@ -1,5 +1,6 @@
 //src/components/holo-initiate.ts
 
+import {CyreLog} from 'cyre'
 import type {HoloIOOptions} from '../types/interface'
 import {holoCreateElement} from './holo-create-element'
 
@@ -20,6 +21,11 @@ export const holoInitiate = (carouselName: string = 'holo-carousel'): void => {
 
   // Initialize each carousel
   Array.from(carousels).forEach(carousel => {
-    holoCreateElement(carousel as HTMLElement, {} as Partial<HoloIOOptions>)
+    try {
+      const element = carousel as HTMLElement
+      holoCreateElement(element, {} as Partial<HoloIOOptions>)
+    } catch (error) {
+      CyreLog.error('Error auto-initializing carousel:', error)
+    }
   })
 }

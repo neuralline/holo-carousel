@@ -1,142 +1,173 @@
-// src/components/holo-io-manager.ts
+//src/components/holo-io-manager.ts
 
-import {cyre} from 'cyre'
+import {cyre, CyreLog} from 'cyre'
 import type {HoloVirtual, HoloShadow} from '../types/interface'
-import {Touch} from './holo-touch'
+import {handleTouchStart} from './holo-touch'
 import {wheeler} from '../libs/holo-essentials'
+import {initializeInstanceEvents} from '../core/holo-events'
 import {EVENTS} from '../config/holo-config'
-import {registerInstanceEvents, safeEventCall} from '../core/holo-event-system'
 
 /**
  * H.O.L.O - C.A.R.O.U.S.E.L
- * Improved IO manager with error handling and cleanup
- */
-
-/**
+ * IO manager
  * Setup input/output event handling for a carousel instance
  */
 export const setupIOManager = (
   virtual: HoloVirtual,
   shadow: HoloShadow
 ): void => {
-  // Validation
   if (!virtual) {
-    console.error('IO Manager: Missing virtual state')
+    CyreLog.error('@Holo: Major malfunctions - Virtual state is missing')
     return
   }
 
-  if (!virtual.id) {
-    console.error('IO Manager: Virtual state has no ID')
+  if (!virtual.id || typeof virtual.id !== 'string') {
+    CyreLog.error('@Holo: Virtual state has no valid ID', virtual)
     return
   }
 
-  if (!shadow?.carousel || !shadow?.container) {
-    console.error('IO Manager: Invalid shadow DOM references', virtual.id)
-    return
+  // Initialize instance-specific events using the enhanced event system
+  try {
+    initializeInstanceEvents(virtual.id, virtual.io)
+  } catch (error) {
+    CyreLog.error(
+      `Error initializing events for carousel ${virtual.id}:`,
+      error
+    )
   }
-
-  // Register instance-specific events with cyre
-  const updatedVirtual = registerInstanceEvents(virtual)
 
   // Setup DOM event handlers if enabled
-  if (updatedVirtual.io.enabled) {
-    setupDomEventHandlers(updatedVirtual, shadow)
+  if (virtual.io.enabled) {
+    setupDomEventHandlers(virtual, shadow)
   }
 
   // Initial refresh
-  safeEventCall(EVENTS.REFRESH_CAROUSEL, EVENTS.REFRESH_CAROUSEL, {
-    virtual: updatedVirtual,
-    shadow
-  })
+  cyre.call(EVENTS.REFRESH_CAROUSEL, {virtual, shadow})
 }
 
 /**
- * Setup DOM event handlers with cleanup capabilities
+ * Setup DOM event handlers for user interaction
  */
 const setupDomEventHandlers = (
   virtual: HoloVirtual,
   shadow: HoloShadow
-): (() => void) => {
-  const cleanupFunctions: Array<() => void> = []
+): void => {
+  if (!virtual.id || !shadow || !shadow.carousel || !shadow.container) {
+    CyreLog.error(
+      `Cannot setup DOM handlers for carousel ${virtual?.id}: Invalid shadow elements`
+    )
+    return
+  }
+
+  CyreLog.info(`Setting up DOM handlers for carousel ${virtual.id}`)
 
   // Mouse drag handler
   if (virtual.io.drag) {
     const handleMouseDown = (e: MouseEvent): void => {
       e.preventDefault()
-      Touch._touchStart(e, virtual.id)
+      e.stopPropagation()
+      handleTouchStart(e, virtual.id)
+
+      // Log for debugging
+      CyreLog.debug(`Mouse down detected on carousel ${virtual.id}`)
     }
 
-    shadow.container.addEventListener('mousedown', handleMouseDown)
-    cleanupFunctions.push(() => {
-      shadow.container.removeEventListener('mousedown', handleMouseDown)
+    shadow.container.addEventListener('mousedown', handleMouseDown, {
+      passive: false
+    })
+
+    // Add click handlers to individual slides
+    const slideElements = shadow.container.querySelectorAll('.holo')
+    slideElements.forEach((slide, index) => {
+      slide.addEventListener(
+        'click',
+        e => {
+          e.preventDefault()
+          e.stopPropagation()
+
+          CyreLog.debug(`Slide ${index} clicked in carousel ${virtual.id}`)
+
+          if (virtual.eventIds?.activate) {
+            cyre.call(virtual.eventIds.activate, [
+              slide as HTMLElement,
+              virtual
+            ])
+          }
+        },
+        {passive: false}
+      )
     })
   }
 
   // Touch drag handler
   if (virtual.io.drag) {
-    const handleTouchStart = (e: TouchEvent): void => {
+    const touchStartHandler = (e: TouchEvent): void => {
       e.preventDefault()
-      Touch._touchStart(e, virtual.id)
+      e.stopPropagation()
+      handleTouchStart(e, virtual.id)
+
+      // Log for debugging
+      CyreLog.debug(`Touch start detected on carousel ${virtual.id}`)
     }
 
-    shadow.container.addEventListener('touchstart', handleTouchStart, {
+    shadow.container.addEventListener('touchstart', touchStartHandler, {
       passive: false
-    })
-    cleanupFunctions.push(() => {
-      shadow.container.removeEventListener('touchstart', handleTouchStart)
     })
   }
 
   // Mouse wheel handler
   if (virtual.io.wheel) {
     const handleWheel = (e: WheelEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
       wheeler(e, virtual.id)
+
+      // Log for debugging
+      CyreLog.debug(`Wheel event detected on carousel ${virtual.id}`)
     }
 
     shadow.carousel.addEventListener('wheel', handleWheel, {passive: false})
-    cleanupFunctions.push(() => {
-      shadow.carousel.removeEventListener('wheel', handleWheel)
+  }
+
+  // Navigation buttons
+  const prevButton = shadow.carousel.querySelector('.holo-prev')
+  const nextButton = shadow.carousel.querySelector('.holo-next')
+
+  if (prevButton) {
+    prevButton.addEventListener('click', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (virtual.eventIds?.prevSlide) {
+        cyre.call(virtual.eventIds.prevSlide, virtual)
+      }
     })
   }
 
-  // Animation handler
+  if (nextButton) {
+    nextButton.addEventListener('click', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (virtual.eventIds?.nextSlide) {
+        cyre.call(virtual.eventIds.nextSlide, virtual)
+      }
+    })
+  }
+
+  // Animation handler - start animation if enabled
   if (virtual.io.animate && virtual.eventIds?.animate) {
     cyre.call(virtual.eventIds.animate, virtual)
   }
 
-  // Resize observer for better performance than resize event
-  const resizeObserver = new ResizeObserver(
-    throttle(() => {
-      safeEventCall(EVENTS.REFRESH_CAROUSEL, EVENTS.REFRESH_CAROUSEL, {
-        virtual,
-        shadow
-      })
-    }, 100)
-  )
-
-  resizeObserver.observe(shadow.carousel)
-  cleanupFunctions.push(() => resizeObserver.disconnect())
-
-  // Return a cleanup function that removes all event listeners
-  return () => cleanupFunctions.forEach(cleanup => cleanup())
-}
-
-/**
- * Simple throttle function to limit event firing
- */
-const throttle = <T extends (...args: any[]) => any>(
-  func: T,
-  limit: number
-): ((...args: Parameters<T>) => void) => {
-  let inThrottle: boolean = false
-
-  return function (this: any, ...args: Parameters<T>): void {
-    if (!inThrottle) {
-      func.apply(this, args)
-      inThrottle = true
-      setTimeout(() => (inThrottle = false), limit)
-    }
+  // Resize handler
+  const handleResize = (): void => {
+    cyre.call(EVENTS.REFRESH_CAROUSEL, {virtual, shadow})
   }
+
+  // Add resize listener to window
+  window.addEventListener('resize', handleResize, {passive: true})
+
+  // Also refresh on orientation change
+  window.addEventListener('orientationchange', handleResize, {passive: true})
 }
 
 export default setupIOManager

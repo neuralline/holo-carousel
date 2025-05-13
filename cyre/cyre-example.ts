@@ -1,4 +1,4 @@
-//src/libs/cyre-example.ts
+//cyre/cyre-example.ts
 
 import {cyre, CyreLog} from 'cyre'
 

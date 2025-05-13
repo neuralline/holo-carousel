@@ -1,5 +1,5 @@
-// src/libs/cyre-intralink.ts
-import {cyre} from 'cyre'
+//cyre/cyre-intralink.ts
+import {cyre, CyreLog} from 'cyre'
 
 /* 
     Neural Line
@@ -72,7 +72,7 @@ cyre.action({
 
 // 1. Register User Handler - START OF CHAIN
 cyre.on('register-user', userData => {
-  log('register-user', 'Processing new user registration', userData)
+  CyreLog('register-user', 'Processing new user registration', userData)
 
   // Return intralink to next step in chain
   return {

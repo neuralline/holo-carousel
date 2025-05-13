@@ -1,8 +1,9 @@
-// src/components/holo-create-element.ts
+//src/components/holo-create-element.ts
 
+import {CyreLog} from 'cyre'
 import type {HoloIOOptions} from '../types/interface'
 import {_holo} from '../libs/holo-essentials'
-import {setupIOManager} from './holo-io-manager'
+import setupIOManager from './holo-io-manager'
 import {createHoloInstance} from '../core/holo-state'
 
 /**
@@ -13,11 +14,10 @@ import {createHoloInstance} from '../core/holo-state'
 export const holoCreateElement = (
   slide: HTMLElement,
   io: Partial<HoloIOOptions> = {}
-): void => {
-  // Validate input
+): string | null => {
   if (!slide || !slide.nodeType) {
     console.error('@Holo: Invalid DOM element provided')
-    return
+    return null
   }
 
   // Ensure slide has an ID
@@ -29,11 +29,14 @@ export const holoCreateElement = (
     // Create and register the carousel instance
     _holo[slide.id] = createHoloInstance(slide, io)
 
+    console.log('@Holo: Created carousel:', slide.id)
+
     // Setup event handlers
     setupIOManager(_holo[slide.id].getVirtual, _holo[slide.id].getShadow)
 
-    console.log('@Holo: Created carousel:', slide.id)
+    return slide.id
   } catch (error) {
-    console.error('@Holo: Failed to create carousel:', error)
+    console.error('@Holo: Error creating carousel:', error)
+    return null
   }
 }

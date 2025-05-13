@@ -8,7 +8,7 @@ import type {
   HoloIOOptions
 } from '../types/interface'
 import {DEFAULT_IO_OPTIONS, ANIMATION, EVENTS} from '../config/holo-config'
-import {createEventIds} from '../config/holo-config'
+import {createEventIds} from '../core/holo-events'
 
 /**
  * Create default virtual state with immutable pattern

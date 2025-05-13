@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Holo Carousel v3.5 - Neural Line</title>
+    <meta property="og:type" content="app" />
+    <meta property="og:image" content="img/22.jpg" />
+    <meta name="twitter:site" content="@NeuralLine" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      /* Advanced styling options */
+      .holo-carousel {
+        position: relative;
+        overflow: hidden;
+        margin: 0 auto;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+      }
+
+      .holo-container {
+        display: flex;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        will-change: transform;
+      }
+
+      .holo {
+        flex-shrink: 0;
+        position: relative;
+        transition-property: transform, opacity;
+      }
+
+      .holo img {
+        display: block;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .transition {
+        transition-duration: 400ms;
+        transition-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+      }
+
+      .holo.active {
+        z-index: 1;
+        transform: scale(1.05);
+      }
+
+      /* Controls */
+      .holo-controls {
+        position: absolute;
+        bottom: 10px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        z-index: 2;
+      }
+
+      .holo-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.5);
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .holo-dot.active {
+        background: white;
+        transform: scale(1.2);
+      }
+
+      .holo-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 40px;
+        height: 40px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        cursor: pointer;
+        font-size: 18px;
+        z-index: 2;
+      }
+
+      .holo-prev {
+        left: 10px;
+      }
+
+      .holo-next {
+        right: 10px;
+      }
+
+      /* Dark theme */
+      .dark-theme .holo-carousel {
+        background-color: #222;
+        color: white;
+      }
+
+      /* Placeholder for demo */
+      .placeholder-slide {
+        background-color: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: #333;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="holo-wrapper" id="wrapper">
+      <div class="container">
+        <h1>Holo Carousel v3.5</h1>
+        <p>Enhanced with advanced Cyre patterns and functional architecture</p>
+
+        <!-- Main carousel example -->
+        <carousel
+          class="holo-carousel holo-carousel-style-movie-poster transition"
+          id="main-carousel"
+          data-duration="600"
+          data-wheel="1"
+          data-loop="20"
+        >
+          <ul class="holo-container transition">
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/1.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/2.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/3.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/4.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/5.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 243px; height: 360px"
+            >
+              <img src="img/6.jpg" alt="Vertical 1" />
+            </li>
+          </ul>
+
+          <!-- Navigation controls -->
+          <div class="holo-nav holo-prev">&lt;</div>
+          <div class="holo-nav holo-next">&gt;</div>
+
+          <!-- Dots -->
+          <div class="holo-controls" id="main-carousel-dots"></div>
+        </carousel>
+
+        <div style="margin-top: 30px; text-align: center">
+          <button id="prev-btn">Previous</button>
+          <button id="next-btn">Next</button>
+          <button id="refresh-btn">Refresh</button>
+        </div>
+
+        <!-- Vertical carousel example -->
+        <carousel
+          class="holo-carousel vertical-carousel transition"
+          id="vertical-carousel"
+          style="height: 600px; margin-top: 50px; overflow: hidden"
+          data-duration="800"
+          data-wheel="1"
+          data-orientation="1"
+        >
+          <!-- Note the flex-direction: column for vertical layout -->
+          <ul
+            class="holo-container transition"
+            style="flex-direction: column; display: flex"
+          >
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/1.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/2.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/3.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/4.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/5.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/6.jpg" alt="Vertical 1" />
+            </li>
+            <li
+              class="holo transition placeholder-slide"
+              style="width: 100%; height: 200px; flex-shrink: 0"
+            >
+              <img src="img/7.jpg" alt="Vertical 1" />
+            </li>
+          </ul>
+
+          <!-- Vertical navigation controls -->
+          <div
+            class="holo-nav holo-prev"
+            style="
+              top: 10px;
+              left: 50%;
+              transform: translateX(-50%) rotate(90deg);
+            "
+          >
+            &lt;
+          </div>
+          <div
+            class="holo-nav holo-next"
+            style="
+              bottom: 10px;
+              top: auto;
+              left: 50%;
+              transform: translateX(-50%) rotate(90deg);
+            "
+          >
+            &gt;
+          </div>
+        </carousel>
+
+        <div style="margin-top: 30px; text-align: center">
+          <button id="v-prev-btn">Vertical Prev</button>
+          <button id="v-next-btn">Vertical Next</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/holo.js"></script>
+    <script src="js/holo-fix.js"></script>
+    <script>
+      // Function to initialize both carousels
+      function initializeCarousels() {
+        console.log('Initializing carousels...')
+
+        // Set explicit sizes for the vertical carousel slides
+        const verticalCarousel = document.getElementById('vertical-carousel')
+        if (verticalCarousel) {
+          const container = verticalCarousel.querySelector('.holo-container')
+          if (container) {
+            container.style.flexDirection = 'column'
+            container.style.display = 'flex'
+
+            // Ensure each slide has an explicit height
+            const slides = verticalCarousel.querySelectorAll('.holo')
+            slides.forEach(slide => {
+              const slideEl = slide
+              if (!slideEl.style.height) {
+                slideEl.style.height = '200px'
+              }
+              slideEl.style.flexShrink = '0'
+              slideEl.style.width = '100%'
+            })
+          }
+        }
+
+        // Initialize Holo
+        if (typeof window.Holo !== 'undefined') {
+          console.log('Holo loaded successfully:', window.Holo)
+
+          // Initialize the system
+          window.Holo.INIT('holo-carousel')
+          window.Holo.AUTO('holo-carousel')
+
+          // Configure main carousel
+          window.Holo.carousel('main-carousel', {
+            wheel: 1,
+            drag: 1,
+            swipe: 1,
+            snap: 1,
+            focus: 1,
+            duration: 400,
+            orientation: 1
+          })
+
+          // Configure vertical carousel
+          window.Holo.carousel('vertical-carousel', {
+            wheel: 1,
+            drag: 1,
+            swipe: 1,
+            snap: 1,
+            focus: 1,
+            orientation: 1,
+            duration: 600
+          })
+
+          // Force refresh
+          setTimeout(() => {
+            window.Holo.refresh()
+          }, 100)
+        } else {
+          console.error('Holo not loaded. Retrying in 500ms...')
+          setTimeout(initializeCarousels, 500)
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOM loaded, initializing carousel...')
+        initializeCarousels()
+
+        // Set up external button handlers
+        document.getElementById('prev-btn').addEventListener('click', () => {
+          window.Holo.prev('main-carousel')
+        })
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+          window.Holo.next('main-carousel')
+        })
+
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+          window.Holo.refresh()
+        })
+
+        // Set up buttons for vertical carousel
+        document.getElementById('v-prev-btn').addEventListener('click', () => {
+          window.Holo.prev('vertical-carousel')
+        })
+
+        document.getElementById('v-next-btn').addEventListener('click', () => {
+          window.Holo.next('vertical-carousel')
+        })
+
+        // Set up navigation for vertical carousel
+        const verticalCarousel = document.getElementById('vertical-carousel')
+        if (verticalCarousel) {
+          const prevBtn = verticalCarousel.querySelector('.holo-prev')
+          const nextBtn = verticalCarousel.querySelector('.holo-next')
+
+          if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+              console.log('Vertical prev clicked')
+              window.Holo.prev('vertical-carousel')
+            })
+          }
+
+          if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+              console.log('Vertical next clicked')
+              window.Holo.next('vertical-carousel')
+            })
+          }
+        }
+
+        // Create dot indicators
+        const mainCarousel = document.getElementById('main-carousel')
+        const slidesCount =
+          mainCarousel.querySelector('.holo-container').children.length
+        const dotsContainer = document.getElementById('main-carousel-dots')
+
+        for (let i = 0; i < slidesCount; i++) {
+          const dot = document.createElement('div')
+          dot.className = 'holo-dot'
+          dot.dataset.index = i
+
+          dot.addEventListener('click', function () {
+            window.Holo.goTo('main-carousel', parseInt(this.dataset.index))
+            updateActiveDot(parseInt(this.dataset.index))
+          })
+
+          dotsContainer.appendChild(dot)
+        }
+
+        // Update the active dot based on current slide
+        function updateActiveDot(index) {
+          const dots = dotsContainer.querySelectorAll('.holo-dot')
+          dots.forEach(dot => dot.classList.remove('active'))
+          dots[index].classList.add('active')
+        }
+
+        // Set initial active dot
+        updateActiveDot(0)
+
+        // Debug event handlers for slides
+        document.querySelectorAll('.holo').forEach(item => {
+          item.addEventListener('click', function () {
+            console.log('Item clicked:', this)
+
+            // Find parent carousel
+            const carousel = this.closest('.holo-carousel')
+            if (carousel && carousel.id) {
+              console.log('Activating in carousel:', carousel.id)
+
+              // Find index of this slide
+              const slides = Array.from(carousel.querySelectorAll('.holo'))
+              const index = slides.indexOf(this)
+
+              if (index >= 0) {
+                window.Holo.goTo(carousel.id, index)
+              }
+            }
+          })
+        })
+
+        // Add debug section
+        const debugSection = document.createElement('div')
+        debugSection.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-width: 400px;
+            z-index: 9999;
+          `
+
+        debugSection.innerHTML = `
+            <h3>Debug Controls</h3>
+            <div>
+              <button id="debug-refresh">Force Refresh</button>
+              <button id="debug-dimensions">Log Dimensions</button>
+              <button id="debug-toggle">Toggle Debug Mode</button>
+            </div>
+            <div id="debug-status"></div>
+          `
+
+        document.body.appendChild(debugSection)
+
+        // Add debug buttons functionality
+        document
+          .getElementById('debug-refresh')
+          .addEventListener('click', () => {
+            console.log('Force refreshing carousels...')
+            window.Holo.refresh()
+
+            // Also manually refresh the vertical carousel dimensions
+            const verticalCarousel =
+              document.getElementById('vertical-carousel')
+            if (verticalCarousel) {
+              const container =
+                verticalCarousel.querySelector('.holo-container')
+              if (container) {
+                container.style.flexDirection = 'column'
+
+                // Log current dimensions
+                const vState = window.Holo.getState('vertical-carousel')
+                console.log('Vertical carousel state:', vState)
+
+                if (
+                  vState &&
+                  (!vState.item.height || isNaN(vState.item.height))
+                ) {
+                  console.log('Setting explicit height for vertical slides')
+                  const slides = verticalCarousel.querySelectorAll('.holo')
+                  slides.forEach(slide => {
+                    slide.style.height = '200px'
+                    slide.style.flexShrink = '0'
+                  })
+                }
+              }
+            }
+
+            // Update status
+            document.getElementById(
+              'debug-status'
+            ).innerHTML = `Refresh triggered at ${new Date().toLocaleTimeString()}`
+          })
+
+        document
+          .getElementById('debug-dimensions')
+          .addEventListener('click', () => {
+            const hCarousel = window.Holo.getState('main-carousel')
+            const vCarousel = window.Holo.getState('vertical-carousel')
+
+            console.log('Horizontal carousel state:', hCarousel)
+            console.log('Vertical carousel state:', vCarousel)
+
+            // Update status
+            document.getElementById('debug-status').innerHTML = `
+              <div>Horizontal: w=${hCarousel?.item?.width || 'unknown'}, h=${
+              hCarousel?.item?.height || 'unknown'
+            }</div>
+              <div>Vertical: w=${vCarousel?.item?.width || 'unknown'}, h=${
+              vCarousel?.item?.height || 'unknown'
+            }</div>
+              <div>Vertical position: Y=${vCarousel?.transformY || '0'}</div>
+            `
+          })
+
+        document
+          .getElementById('debug-toggle')
+          .addEventListener('click', () => {
+            // Toggle debug mode if the function exists
+            if (
+              window.holoDebug &&
+              typeof window.holoDebug.toggleDebugMode === 'function'
+            ) {
+              const isEnabled = window.holoDebug.toggleDebugMode()
+              document.getElementById('debug-status').innerHTML = `Debug mode ${
+                isEnabled ? 'enabled' : 'disabled'
+              }`
+            } else {
+              document.getElementById('debug-status').innerHTML =
+                'Debug API not available'
+            }
+          })
+      })
+    </script>
+  </body>
+</html>

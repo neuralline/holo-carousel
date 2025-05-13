@@ -1,259 +1,407 @@
-// src/app.ts
+//src/app.ts
 
 /* 
     Neural Line
-    Reactive carousel
+    Reactive Carousel
     H.O.L.O - C.A.R.O.U.S.E.L
-    Version 3.0.0 2025
+    Version 3.5.0 (2025)
 */
 
-import {cyre} from 'cyre'
+import {cyre, CyreLog} from 'cyre'
 import type {HoloIOOptions, HoloVirtual} from './types/interface'
 import {holoCreateElement} from './components/holo-create-element'
-import {_holo, _getItemWidthHeight} from './libs/holo-essentials'
+import {_holo} from './libs/holo-essentials'
 import {holoInitiate} from './components/holo-initiate'
-import {Touch, setupGlobalTouchListeners} from './components/holo-touch'
-import {transformX, transformY} from './components/orientation-handler'
-import {EVENTS, SELECTORS} from './config/holo-config'
-import {registerGlobalEvents, safeEventCall} from './core/holo-event-system'
-import {updateHoloInstance} from './core/holo-state'
+import {EVENTS, DEFAULT_IO_OPTIONS, CSS_CLASSES} from './config/holo-config'
+import {
+  safeEventCall,
+  createEventIds,
+  initializeEventSystem,
+  initializeInstanceEvents
+} from './core/holo-events'
+import {handleTouchStart, initializeTouchSystem} from './components/holo-touch'
+import {getCurrentSlideIndex, updateActiveSlide} from './libs/holo-dom'
+import {
+  initializePerformanceMonitoring,
+  getPerformanceHistory,
+  optimizeCarousel
+} from './core/holo-performance'
+import {forceRefreshAllCarousels} from './libs/holo-dom-fix'
+import {initializeDebugTools} from './libs/debug'
 
 /**
- * Calculate number of slots that fit in parent container
+ * Update carousel options with proper validation
  */
-const calculateNumberOfSlots = (
-  parent: number,
-  item: number,
-  max?: number
-): number => {
-  const slots = Math.floor(parent / item) || 1
-  return max ? Math.min(slots, max) : slots
+function updateCarouselOptions(
+  id: string,
+  options: Partial<HoloIOOptions> = {}
+): {ok: boolean; data: HoloIOOptions | string} {
+  try {
+    if (!_holo[id]) {
+      return {ok: false, data: `Carousel with ID ${id} not found`}
+    }
+
+    const virtual = _holo[id].getVirtual
+
+    // Filter valid options
+    const validOptions = Object.entries(options).reduce((acc, [key, value]) => {
+      if (key in DEFAULT_IO_OPTIONS) {
+        return {...acc, [key]: value}
+      }
+      CyreLog.warn(`Invalid option ignored: ${key}`)
+      return acc
+    }, {})
+
+    // Create updated options
+    const updatedIO = {
+      ...virtual.io,
+      ...validOptions
+    }
+
+    // Update state
+    _holo[id].setState = {
+      ..._holo[id].getVirtual,
+      io: updatedIO
+    }
+
+    // Initialize instance events with new options
+    initializeInstanceEvents(id, updatedIO)
+
+    return {ok: true, data: updatedIO}
+  } catch (error) {
+    CyreLog.error('Error updating carousel options:', error)
+    return {
+      ok: false,
+      data: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
 }
 
 /**
- * Main Holo carousel module
+ * Get carousel dimensions and state
  */
-const createHoloCarousel = () => {
-  // Register core event handlers
-  registerGlobalEvents()
+function getCarouselDimensions(id: string) {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return null
+  }
+  return _holo[id].getDimensions
+}
 
-  // Register refresh handler
-  cyre.on(
-    EVENTS.REFRESH_CAROUSEL,
-    (state: {virtual: HoloVirtual; shadow: any}) => {
-      const {virtual, shadow} = state
+/**
+ * Get carousel state
+ */
+function getCarouselState(id: string): HoloVirtual | null {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return null
+  }
+  return _holo[id].getVirtual
+}
 
-      if (!virtual?.id || !shadow?.container) {
-        console.error('Holo carousel refresh error:', virtual?.id)
-        return
-      }
-
-      // Reset container style
-      shadow.container.setAttribute('style', '')
-
-      // Get first item dimensions if available
-      const firstItem = shadow.container.children[0] as HTMLElement
-      const {height = 0, width = 0} = firstItem
-        ? _getItemWidthHeight(firstItem)
-        : {height: 0, width: 0}
-
-      // Calculate parent container width
-      const parentWidth = shadow.carousel.parentNode?.clientWidth || 0
-
-      // Update virtual state with new dimensions
-      const updatedVirtual = {
-        ...virtual,
-        item: {
-          ...virtual.item,
-          height,
-          width
-        },
-        numberOfSlots: calculateNumberOfSlots(
-          parentWidth,
-          width,
-          virtual.item.max
-        )
-      }
-
-      // Calculate carousel dimensions
-      const calcCarouselWidth =
-        updatedVirtual.numberOfSlots * updatedVirtual.item.width
-      const innerCarouselWidth = shadow.carousel.clientWidth
-      const calcWidth =
-        shadow.container.children.length * updatedVirtual.item.width
-      const innerWidth = shadow.container.clientWidth || calcWidth
-
-      // Update with calculated dimensions
-      const carouselRefreshed = {
-        ...updatedVirtual,
-        carousel: {
-          width: calcCarouselWidth || innerCarouselWidth,
-          height: updatedVirtual.item.height || shadow.carousel.clientHeight
-        },
-        container: {
-          width: updatedVirtual.io.orientation
-            ? shadow.carousel.width
-            : innerWidth,
-          height:
-            shadow.container.clientHeight || updatedVirtual.item.height || 0
-        }
-      }
-
-      // Calculate end position based on orientation
-      carouselRefreshed.endOfSlidePosition = carouselRefreshed.io.orientation
-        ? -Math.abs(
-            (carouselRefreshed.container.height || 0) -
-              (carouselRefreshed.carousel.height || 0)
-          )
-        : -Math.abs(
-            (carouselRefreshed.container.width || 0) -
-              (carouselRefreshed.carousel.width || 0)
-          )
-
-      // Update dimensions
-      _holo[virtual.id].setDimension = {...carouselRefreshed}
-
-      // Call snap handler with fallback
-      return safeEventCall(
-        EVENTS.SNAP_TO_POSITION,
-        EVENTS.SNAP,
-        carouselRefreshed
-      )
-    }
-  )
-
-  // Snap to grid handler
-  cyre.on(EVENTS.SNAP, (virtual: HoloVirtual) => {
-    if (!virtual?.id || !_holo[virtual.id]) {
-      console.error('Holo snap error: Invalid state')
+/**
+ * Refresh all carousels with more robust error handling
+ */
+function refreshAllCarousels(): void {
+  try {
+    const carouselIds = Object.keys(_holo)
+    if (carouselIds.length === 0) {
+      CyreLog.info('No carousels to refresh')
       return
     }
 
-    // Enable transition animation
-    _holo[virtual.id].updateStyle = 1
+    CyreLog.info(`Refreshing ${carouselIds.length} carousels`)
 
-    // Apply transformation based on orientation
-    const transformedVirtual = virtual.io.orientation
-      ? transformY(virtual)
-      : transformX(virtual)
+    // First trigger a global refresh
+    cyre.call(EVENTS.REFRESH_SCREEN)
 
-    // Update state
-    _holo[virtual.id].setState = {...transformedVirtual}
-  })
-
-  // Add direct handler for SNAP_TO_POSITION
-  cyre.on(EVENTS.SNAP_TO_POSITION, (virtual: HoloVirtual) => {
-    // Forward to SNAP handler
-    return safeEventCall(EVENTS.SNAP, EVENTS.SNAP, virtual)
-  })
-
-  // Register actions for core events
-  cyre.action([
-    {id: EVENTS.REFRESH_CAROUSEL, throttle: 100},
-    {id: EVENTS.REFRESH_SCREEN, throttle: 100},
-    {id: EVENTS.SNAP_TO_POSITION, throttle: 100},
-    {id: EVENTS.SNAP, throttle: 100}
-  ])
-
-  /**
-   * Update carousel options
-   */
-  const updateCarouselOptions = (
-    id: string,
-    io: Partial<HoloIOOptions> = {}
-  ): {ok: boolean; data: HoloIOOptions} => {
-    if (!id || !_holo[id]) {
-      console.error('updateCarouselOptions: Invalid carousel ID', id)
-      return {ok: false, data: {} as HoloIOOptions}
-    }
-
-    // Update the instance with new options
-    updateHoloInstance(_holo[id], io)
-
-    return {ok: true, data: _holo[id].getVirtual.io}
-  }
-
-  /**
-   * Get carousel dimensions
-   */
-  const getCarouselDimensions = (id: string) => {
-    if (!id || !_holo[id]) {
-      console.error('getCarouselDimensions: Invalid carousel ID', id)
-      return null
-    }
-
-    return _holo[id].getDimensions
-  }
-
-  /**
-   * Initialize the Holo carousel system
-   */
-  const initialize = (selector: string = SELECTORS.CAROUSEL_CLASS): void => {
-    console.log(
-      '%c HOLO - Initiating holo v3.0.0 ',
-      'background: #022d5f; color: white; display: block;'
-    )
-
-    // Setup global touch event handlers
-    setupGlobalTouchListeners()
-
-    // Setup screen refresh handling
-    cyre.on(EVENTS.REFRESH_SCREEN, refreshAllCarousels)
-
-    // Initialize all carousels with the selector
-    holoInitiate(selector)
-  }
-
-  /**
-   * Refresh all carousels
-   */
-  const refreshAllCarousels = (): void => {
-    Object.keys(_holo).forEach(id => {
-      if (!_holo[id]) return
-
+    // Then refresh each carousel individually to ensure all are updated
+    carouselIds.forEach(id => {
       try {
-        safeEventCall(
-          EVENTS.REFRESH_CAROUSEL,
-          EVENTS.REFRESH_CAROUSEL,
-          _holo[id].getState
-        )
-      } catch (error) {
-        console.error(`Error refreshing carousel ${id}:`, error)
+        if (!_holo[id]?.getShadow?.carousel) {
+          CyreLog.warn(
+            `Missing DOM elements for carousel ${id}, skipping refresh`
+          )
+          return
+        }
+
+        // Ensure the carousel element is visible in the DOM
+        const isVisible =
+          _holo[id].getShadow.carousel.offsetWidth > 0 ||
+          _holo[id].getShadow.carousel.offsetHeight > 0
+
+        if (!isVisible) {
+          CyreLog.warn(`Carousel ${id} not visible in DOM, skipping refresh`)
+          return
+        }
+
+        // Call refresh with current state
+        cyre.call(EVENTS.REFRESH_CAROUSEL, _holo[id].getState)
+      } catch (innerError) {
+        CyreLog.error(`Error refreshing carousel ${id}:`, innerError)
       }
     })
-  }
-
-  // Window resize handler with throttling
-  const throttledResize = (() => {
-    let resizeTimeout: number | null = null
-
-    return () => {
-      if (resizeTimeout === null) {
-        resizeTimeout = window.setTimeout(() => {
-          resizeTimeout = null
-          safeEventCall(EVENTS.REFRESH_SCREEN, EVENTS.REFRESH_SCREEN, null)
-        }, 100)
-      }
-    }
-  })()
-
-  window.addEventListener('resize', throttledResize, {passive: true})
-
-  // Public API
-  return {
-    TOUCH: Touch,
-    INIT: initialize,
-    BUILD: holoCreateElement,
-    AUTO: holoInitiate,
-    carousel: updateCarouselOptions,
-    refresh: refreshAllCarousels,
-    dimensions: getCarouselDimensions,
-    // Export event constants for reuse
-    EVENTS
+  } catch (error) {
+    CyreLog.error('Error in global refresh:', error)
   }
 }
 
-// Create the Holo instance
-const Holo = createHoloCarousel()
+/**
+ * Setup window resize handler
+ */
+function setupWindowResizeHandler(): void {
+  // Configure resize event with throttling
+  cyre.action({
+    id: 'window-resize',
+    throttle: 200,
+    log: false
+  })
 
+  // Register resize handler
+  cyre.on('window-resize', () => {
+    return {
+      id: EVENTS.REFRESH_SCREEN,
+      payload: null
+    }
+  })
+
+  // Add event listener
+  window.addEventListener(
+    'resize',
+    () => {
+      cyre.call('window-resize')
+    },
+    {passive: true}
+  )
+}
+
+/**
+ * Initialize the Holo carousel system
+ * Prepares the global event system
+ */
+function initialize(selector: string = CSS_CLASSES.CAROUSEL): string {
+  CyreLog.info(`Initializing Holo with selector: ${selector}`)
+
+  // Schedule a refresh when everything is loaded
+  window.addEventListener('load', () => {
+    // First fast refresh
+    refreshAllCarousels()
+
+    // Then a more thorough refresh with delay to ensure dimensions are calculated
+    setTimeout(() => {
+      forceRefreshAllCarousels().then(() => {
+        CyreLog.info('Force refresh completed successfully')
+      })
+    }, 300)
+  })
+
+  // Return the selector for chaining
+  return selector
+}
+
+/**
+ * Navigate to next slide
+ */
+function nextSlide(id: string): void {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return
+  }
+
+  const virtual = _holo[id].getVirtual
+
+  // Use event IDs from virtual state or fallback to standard naming
+  const eventId = virtual.eventIds?.nextSlide || `next_slide_${id}`
+
+  // Call next slide event
+  safeEventCall(eventId, virtual, EVENTS.NEXT_SLIDE)
+}
+
+/**
+ * Navigate to previous slide
+ */
+function prevSlide(id: string): void {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return
+  }
+
+  const virtual = _holo[id].getVirtual
+
+  // Use event IDs from virtual state or fallback to standard naming
+  const eventId = virtual.eventIds?.prevSlide || `prev_slide_${id}`
+
+  // Call previous slide event
+  safeEventCall(eventId, virtual, EVENTS.PREV_SLIDE)
+}
+
+/**
+ * Go to first slide
+ */
+function firstSlide(id: string): void {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return
+  }
+
+  const virtual = _holo[id].getVirtual
+
+  // Use event IDs from virtual state or fallback to standard naming
+  const eventId = virtual.eventIds?.firstSlide || `first_slide_${id}`
+
+  // Call first slide event
+  safeEventCall(eventId, virtual, EVENTS.FIRST_SLIDE)
+}
+
+/**
+ * Go to last slide
+ */
+function lastSlide(id: string): void {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return
+  }
+
+  const virtual = _holo[id].getVirtual
+
+  // Use event IDs from virtual state or fallback to standard naming
+  const eventId = virtual.eventIds?.lastSlide || `last_slide_${id}`
+
+  // Call last slide event
+  safeEventCall(eventId, virtual, EVENTS.LAST_SLIDE)
+}
+
+/**
+ * Go to specific slide index
+ */
+function goToSlide(id: string, index: number): void {
+  if (!_holo[id]) {
+    CyreLog.warn(`Carousel with ID ${id} not found`)
+    return
+  }
+
+  const virtual = _holo[id].getVirtual
+
+  // Check if we can access goToSlide event
+  if (virtual.eventIds?.goToSlide) {
+    // Use instance-specific event
+    safeEventCall(virtual.eventIds.goToSlide, {index}, EVENTS.GO_TO_SLIDE)
+    return
+  }
+
+  // Fallback to direct calculation if item width exists
+  if (virtual.item.width) {
+    // Calculate position based on index and orientation
+    const updatedVirtual = {
+      ...virtual,
+      transformX: virtual.io.orientation
+        ? 0
+        : -Math.abs(index * virtual.item.width),
+      transformY: virtual.io.orientation
+        ? -Math.abs(index * virtual.item.height)
+        : 0
+    }
+
+    // Call snap event
+    const snapEventId = virtual.eventIds?.snap || `snap_${id}`
+    safeEventCall(snapEventId, updatedVirtual, EVENTS.SNAP)
+    return
+  }
+
+  // Item width not calculated yet - warn and try to refresh
+  CyreLog.warn(`Carousel ${id} item width not calculated yet`)
+
+  // Try to refresh and retry
+  cyre.call(EVENTS.REFRESH_CAROUSEL, _holo[id].getState)
+  setTimeout(() => {
+    if (_holo[id]?.getVirtual?.item?.width) {
+      goToSlide(id, index)
+    }
+  }, 100)
+}
+
+/**
+ * Get current position index
+ */
+function getCurrentPosition(id: string): number {
+  if (!_holo[id]) return 0
+
+  const virtual = _holo[id].getVirtual
+  return getCurrentSlideIndex(virtual)
+}
+
+/**
+ * Apply performance optimizations to a carousel
+ */
+function optimizeCarouselPerformance(
+  id: string,
+  level: 'light' | 'medium' | 'aggressive'
+): void {
+  optimizeCarousel(id, level)
+}
+
+// Initialize the event system immediately
+CyreLog.info(
+  '%c HOLO - Initializing Holo Carousel v3.5.0 ',
+  'background: #022d5f; color: white; display: block;'
+)
+
+// Enable debug tools (can be toggled via query param ?debug=true)
+const urlParams =
+  typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : null
+const debugEnabled = urlParams?.has('debug') || false
+initializeDebugTools(debugEnabled)
+
+// Initialize core systems
+initializeEventSystem()
+
+// Initialize the touch system
+initializeTouchSystem()
+
+// Initialize performance monitoring
+initializePerformanceMonitoring()
+
+// Register window resize handler
+setupWindowResizeHandler()
+
+// Create and export the Holo API
+const Holo = {
+  // Core initialization
+  INIT: initialize,
+  AUTO: holoInitiate,
+  BUILD: holoCreateElement,
+
+  // Configuration and state access
+  carousel: updateCarouselOptions,
+  dimensions: getCarouselDimensions,
+  getState: getCarouselState,
+  getPosition: getCurrentPosition,
+
+  // Navigation
+  next: nextSlide,
+  prev: prevSlide,
+  first: firstSlide,
+  last: lastSlide,
+  goTo: goToSlide,
+
+  // System operations
+  refresh: refreshAllCarousels,
+  getPerformanceHistory,
+  optimize: optimizeCarouselPerformance,
+
+  // Touch handling
+  handleTouchStart,
+
+  // Constants
+  EVENTS
+}
+
+// Export for module use
 export default Holo
+
+// Also expose to window for UMD/browser usage
+if (typeof window !== 'undefined') {
+  ;(window as any).Holo = Holo
+}

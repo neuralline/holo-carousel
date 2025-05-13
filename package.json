@@ -8,7 +8,7 @@
   "public": "public/js/holo-carousel.js",
   "types": "dist/types/index.d.ts",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-to-public.js",
     "dev": "vite",
     "start": "vite public",
     "type-check": "tsc --noEmit",

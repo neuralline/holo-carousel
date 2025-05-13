@@ -22,6 +22,6 @@
       "~/*": ["src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "cyre/cyre-intralink.ts", "cyre/cyre-example.ts"],
   "exclude": ["node_modules", "dist"]
 }

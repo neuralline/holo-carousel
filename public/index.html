@@ -1,88 +1,197 @@
-//public/index.html
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <title>Holo Carousel - Neural Line</title>
-    <meta property="og:type" content="app" />
-    <meta property="og:image" content="img/22.jpg" />
-    <meta name="twitter:site" content="@NeuralLine" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
     />
+    <title>Holo Carousel v3 - Neural Line</title>
+    <meta
+      name="description"
+      content="Modern reactive carousel with enhanced performance"
+    />
+
+    <!-- Carousel styles -->
     <link rel="stylesheet" href="css/style.css" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          Roboto, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f7fa;
+        color: #333;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      h1 {
+        font-size: 32px;
+        margin-bottom: 10px;
+        color: #2d3748;
+      }
+
+      p {
+        font-size: 16px;
+        line-height: 1.6;
+        color: #4a5568;
+        margin-bottom: 30px;
+      }
+
+      .carousel-container {
+        margin-bottom: 50px;
+      }
+
+      .carousel-title {
+        font-size: 20px;
+        margin-bottom: 15px;
+        color: #2d3748;
+      }
+
+      .indicators {
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .carousel-indicator {
+        font-size: 14px;
+        padding: 5px 10px;
+        background-color: #edf2f7;
+        border-radius: 4px;
+      }
+
+      footer {
+        margin-top: 50px;
+        text-align: center;
+        font-size: 14px;
+        color: #718096;
+      }
+    </style>
   </head>
-
   <body>
-    <div class="holo-wrapper" id="wrapper">
-      <!-- <carousel class="holo-carousel holo-carousel-style-one " id="au_carousel2" data-sanp='0' data-wheel='0'
-            data-animate='1' data-duration='5000' data-loop='100'>
-            <ul class="holo-container transition" id="au_pack2">
-                <li class="holo transition"><img src="img/25.jpg" /></li>
-                <li class="holo transition"><img src="img/26.jpg" /></li>
-                <li class="holo transition"><img src="img/27.jpg" /></li>
-                <li class="holo transition"><img src="img/28.jpg" /></li>
-                <li class="holo transition"><img src="img/29.jpg" /></li>
-                <li class="holo transition"><img src="img/30.jpg" /></li>
-                <li class="holo transition"><img src="img/31.jpg" /></li>
-                <li class="holo transition"><img src="img/32.jpg" /></li>
-                <li class="holo transition"><img src="img/33.jpg" /></li>
-                <li class="holo transition"><img src="img/34.jpg" /></li>
-            </ul>
-        </carousel> -->
+    <div class="container">
+      <h1>Holo Carousel 3.0</h1>
+      <p>
+        Enhanced with reactive architecture, modern TypeScript, and advanced
+        Cyre patterns.
+      </p>
 
-      <carousel
-        class="holo-carousel holo-carousel-style-movie-poster transition"
-        id="au_carousel3"
-        data-duration="2000"
-        data-wheel="0"
-        data-loop="20"
-      >
-        <ul class="holo-container transition">
-          <li class="holo transition"><img src="img/24.jpg" /></li>
-          <li class="holo transition"><img src="img/14.jpg" /></li>
-          <li class="holo transition"><img src="img/17.jpg" /></li>
-          <li class="holo transition"><img src="img/12.jpg" /></li>
-          <li class="holo transition"><img src="img/11.jpg" /></li>
-          <li class="holo transition"><img src="img/10.jpg" /></li>
-          <li class="holo transition"><img src="img/9.jpg" /></li>
-          <li class="holo transition"><img src="img/7.jpg" /></li>
-          <li class="holo transition"><img src="img/6.jpg" /></li>
-          <li class="holo transition"><img src="img/5.jpg" /></li>
-          <li class="holo transition"><img src="img/4.jpg" /></li>
-          <li class="holo transition"><img src="img/3.jpg" /></li>
-          <li class="holo transition"><img src="img/2.jpg" /></li>
-          <li class="holo transition"><img src="img/1.jpg" /></li>
-          <li class="holo transition"><img src="img/14.jpg" /></li>
-          <li class="holo transition"><img src="img/13.jpg" /></li>
-          <li class="holo transition"><img src="img/12.jpg" /></li>
-          <li class="holo transition"><img src="img/11.jpg" /></li>
-          <li class="holo transition"><img src="img/10.jpg" /></li>
-        </ul>
-      </carousel>
+      <!-- Main horizontal carousel -->
+      <div class="carousel-container">
+        <h2 class="carousel-title">Movie Poster Style</h2>
+        <div
+          class="holo-carousel holo-carousel-style-movie-poster transition"
+          id="main-carousel"
+        >
+          <ul class="holo-container transition">
+            <li class="holo transition">
+              <img src="img/1.jpg" alt="Movie poster 1" />
+            </li>
+            <li class="holo transition">
+              <img src="img/2.jpg" alt="Movie poster 2" />
+            </li>
+            <li class="holo transition">
+              <img src="img/3.jpg" alt="Movie poster 3" />
+            </li>
+            <li class="holo transition">
+              <img src="img/4.jpg" alt="Movie poster 4" />
+            </li>
+            <li class="holo transition">
+              <img src="img/5.jpg" alt="Movie poster 5" />
+            </li>
+            <li class="holo transition">
+              <img src="img/6.jpg" alt="Movie poster 6" />
+            </li>
+          </ul>
 
-      <script src="umd/holo.js"></script>
-      <script>
-        // Use window.Holo directly, as it's now explicitly exposed
+          <!-- Navigation controls -->
+          <div class="holo-nav holo-prev">&lt;</div>
+          <div class="holo-nav holo-next">&gt;</div>
 
-        // Initialize the carousel
-        window.Holo.INIT('holo-carousel')
-        window.Holo.AUTO('holo-carousel')
+          <!-- Dots -->
+          <div class="holo-controls" id="main-carousel-dots"></div>
+        </div>
 
-        window.Holo.carousel('au_carousel3', {
-          wheel: 1,
-          drag: 1,
-          swipe: 1,
-          snap: 1,
-          focus: 1
-        })
-      </script>
+        <div class="indicators">
+          <div class="carousel-indicator" id="main-position">Position: 0</div>
+          <div class="carousel-indicator" id="main-active">Active: 0</div>
+        </div>
+      </div>
+
+      <!-- Vertical carousel -->
+      <div class="carousel-container">
+        <h2 class="carousel-title">Vertical Carousel</h2>
+        <div
+          class="holo-carousel vertical-carousel transition"
+          id="vertical-carousel"
+        >
+          <ul class="holo-container transition">
+            <li class="holo transition">
+              <img src="img/1.jpg" alt="Vertical 1" />
+            </li>
+            <li class="holo transition">
+              <img src="img/2.jpg" alt="Vertical 2" />
+            </li>
+            <li class="holo transition">
+              <img src="img/3.jpg" alt="Vertical 3" />
+            </li>
+            <li class="holo transition">
+              <img src="img/4.jpg" alt="Vertical 4" />
+            </li>
+            <li class="holo transition">
+              <img src="img/5.jpg" alt="Vertical 5" />
+            </li>
+          </ul>
+
+          <!-- Dots -->
+          <div class="holo-controls" id="vertical-carousel-dots"></div>
+        </div>
+      </div>
+
+      <footer>
+        <p>Holo Carousel v3.0.0 &copy; Neural Line 2025</p>
+      </footer>
     </div>
+
+    <!-- Load the UMD build directly -->
+    <!-- Load the UMD build directly (IMPORTANT: Use the correct path) -->
+    <script src="js/holo.js"></script>
+    <script>
+      console.log('DOM loaded, initializing carousel...')
+
+      // Wait a brief moment for the script to initialize
+
+      console.log('Holo loaded successfully:', window.Holo)
+
+      // Initialize all carousels
+      window.Holo.INIT('holo-carousel')
+      window.Holo.AUTO('holo-carousel')
+
+      // Configure main carousel
+      window.Holo.carousel('main-carousel', {
+        wheel: 1, // Enable mouse wheel
+        drag: 1, // Enable drag
+        swipe: 1, // Enable swipe
+        snap: 1, // Enable snap to grid
+        focus: 1, // Enable focus
+        duration: 400 // Animation duration
+      })
+      window.Holo.carousel('vertical-carousel', {
+        wheel: 1, // Enable mouse wheel
+        drag: 1, // Enable drag
+        swipe: 1, // Enable swipe
+        snap: 1, // Enable snap to grid
+        focus: 1, // Enable focus
+        duration: 400, // Animation duration,
+        orientation: 1
+      })
+    </script>
   </body>
 </html>
