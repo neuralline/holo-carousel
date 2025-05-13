@@ -2,10 +2,13 @@
 
 import {cyre, CyreLog} from 'cyre'
 import type {HoloVirtual, HoloShadow} from '../types/interface'
-import {handleTouchStart} from './holo-touch'
+import {handleTouchStart, handleNestedTouchStart} from './holo-touch'
 import {handleWheel} from '../libs/holo-navigation'
 import {initializeInstanceEvents} from '../core/holo-events'
 import {EVENTS} from '../config/holo-config'
+import {isChildOf} from './holo-relations'
+import {initializeDeepLinking} from './holo-deep-link'
+import {initializeAccordionMode} from './holo-accordion'
 
 /**
  * H.O.L.O - C.A.R.O.U.S.E.L
@@ -36,6 +39,16 @@ export const setupIOManager = (
     )
   }
 
+  // Initialize accordion mode if enabled
+  if (virtual.io.accordionMode) {
+    initializeAccordionMode(virtual, shadow)
+  }
+
+  // Initialize deep linking if enabled
+  if (virtual.io.deepLinking) {
+    initializeDeepLinking(virtual.id)
+  }
+
   // Setup DOM event handlers if enabled
   if (virtual.io.enabled) {
     setupDomEventHandlers(virtual, shadow)
@@ -64,12 +77,30 @@ const setupDomEventHandlers = (
   // Get event IDs from virtual
   const eventIds = virtual.eventIds || {}
 
+  // Determine if this is a nested carousel
+  const isNested = virtual.nestedLevel > 0 || !!virtual.parentId
+
+  // Add data attribute for nested carousels
+  if (isNested) {
+    shadow.carousel.setAttribute('data-nested', 'true')
+
+    if (virtual.parentId) {
+      shadow.carousel.setAttribute('data-parent', virtual.parentId)
+    }
+  }
+
   // Mouse drag handler
   if (virtual.io.drag) {
+    // Use different touch handlers based on nesting
     const handleMouseDown = (e: MouseEvent): void => {
       e.preventDefault()
       e.stopPropagation()
-      handleTouchStart(e, virtual.id)
+
+      if (isNested) {
+        handleNestedTouchStart(e, virtual.id)
+      } else {
+        handleTouchStart(e, virtual.id)
+      }
 
       // Log for debugging
       CyreLog.debug(`Mouse down detected on carousel ${virtual.id}`)
@@ -85,6 +116,10 @@ const setupDomEventHandlers = (
       slide.addEventListener(
         'click',
         e => {
+          // If this is an accordion, don't handle here
+          if (virtual.io.accordionMode) return
+
+          // Otherwise process normally
           e.preventDefault()
           e.stopPropagation()
 
@@ -101,10 +136,16 @@ const setupDomEventHandlers = (
 
   // Touch drag handler
   if (virtual.io.drag) {
+    // Use different touch handlers based on nesting
     const touchStartHandler = (e: TouchEvent): void => {
       e.preventDefault()
       e.stopPropagation()
-      handleTouchStart(e, virtual.id)
+
+      if (isNested) {
+        handleNestedTouchStart(e, virtual.id)
+      } else {
+        handleTouchStart(e, virtual.id)
+      }
 
       // Log for debugging
       CyreLog.debug(`Touch start detected on carousel ${virtual.id}`)
@@ -115,8 +156,8 @@ const setupDomEventHandlers = (
     })
   }
 
-  // Mouse wheel handler
-  if (virtual.io.wheel) {
+  // Mouse wheel handler - only for non-nested carousels
+  if (virtual.io.wheel && !isNested) {
     const wheelHandler = (e: WheelEvent): void => {
       e.preventDefault()
       e.stopPropagation()

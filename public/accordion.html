@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Holo Accordion Mode</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .holo-carousel {
+        width: 100%;
+        overflow: visible;
+        margin-bottom: 40px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .holo-container {
+        display: flex;
+      }
+
+      .holo {
+        font-size: 16px;
+        color: #333;
+        background-color: #fff;
+        border: 1px solid #eee;
+      }
+
+      .accordion-panel-content {
+        padding: 20px;
+        line-height: 1.6;
+      }
+
+      /* Accordion will automatically generate headers, but you can style them */
+      .accordion-header h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      /* Additional styles to make the demo prettier */
+      h2 {
+        margin-top: 50px;
+        margin-bottom: 20px;
+        color: #333;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+      }
+
+      .controls {
+        margin-bottom: 20px;
+      }
+
+      button {
+        padding: 8px 16px;
+        background: #3498db;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+
+      button:hover {
+        background: #2980b9;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Holo Accordion Examples</h1>
+
+    <h2>Vertical Accordion</h2>
+    <div class="controls">
+      <button onclick="Holo.toggleAccordion('vertical-accordion', 0)">
+        Toggle Panel 1
+      </button>
+      <button onclick="Holo.toggleAccordion('vertical-accordion', 1)">
+        Toggle Panel 2
+      </button>
+      <button onclick="Holo.toggleAccordion('vertical-accordion', 2)">
+        Toggle Panel 3
+      </button>
+      <button onclick="Holo.toCarousel('vertical-accordion')">
+        Convert to Carousel
+      </button>
+    </div>
+
+    <div id="vertical-accordion" class="holo-carousel">
+      <div class="holo-container">
+        <div class="holo">
+          <h3>Panel 1 Title</h3>
+          <div class="accordion-panel-content">
+            <p>
+              This is the content for panel 1. The accordion will automatically
+              wrap this content and create a header from the h3 element.
+            </p>
+            <p>
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam
+              auctor, nisl eget ultricies ultrices, nisl nisl aliquet nisl, eget
+              ultricies nisl nisl eget nisl.
+            </p>
+          </div>
+        </div>
+        <div class="holo">
+          <h3>Panel 2 Title</h3>
+          <div class="accordion-panel-content">
+            <p>Content for panel 2 goes here.</p>
+            <p>
+              Vestibulum ante ipsum primis in faucibus orci luctus et ultrices
+              posuere cubilia Curae; Donec velit neque, auctor sit amet aliquam
+              vel, ullamcorper sit amet ligula.
+            </p>
+            <p>
+              Proin eget tortor risus. Vivamus magna justo, lacinia eget
+              consectetur sed, convallis at tellus.
+            </p>
+          </div>
+        </div>
+        <div class="holo">
+          <h3>Panel 3 Title</h3>
+          <div class="accordion-panel-content">
+            <p>This is panel 3 content.</p>
+            <p>
+              Curabitur arcu erat, accumsan id imperdiet et, porttitor at sem.
+              Vivamus suscipit tortor eget felis porttitor volutpat.
+            </p>
+            <ul>
+              <li>Item one</li>
+              <li>Item two</li>
+              <li>Item three</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Horizontal Accordion</h2>
+    <div class="controls">
+      <button onclick="Holo.toggleAccordion('horizontal-accordion', 0)">
+        Toggle Panel 1
+      </button>
+      <button onclick="Holo.toggleAccordion('horizontal-accordion', 1)">
+        Toggle Panel 2
+      </button>
+      <button onclick="Holo.toggleAccordion('horizontal-accordion', 2)">
+        Toggle Panel 3
+      </button>
+      <button onclick="Holo.toCarousel('horizontal-accordion')">
+        Convert to Carousel
+      </button>
+    </div>
+
+    <div id="horizontal-accordion" class="holo-carousel">
+      <div class="holo-container">
+        <div class="holo">
+          <h3>Section A</h3>
+          <div class="accordion-panel-content">
+            <p>
+              This is a horizontal accordion panel. The header will appear on
+              the side.
+            </p>
+            <p>
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras
+              ultricies ligula sed magna dictum porta.
+            </p>
+          </div>
+        </div>
+        <div class="holo">
+          <h3>Section B</h3>
+          <div class="accordion-panel-content">
+            <p>Content for horizontal panel B.</p>
+            <p>
+              Curabitur aliquet quam id dui posuere blandit. Quisque velit nisi,
+              pretium ut lacinia in, elementum id enim.
+            </p>
+          </div>
+        </div>
+        <div class="holo">
+          <h3>Section C</h3>
+          <div class="accordion-panel-content">
+            <p>Horizontal panel C content.</p>
+            <p>
+              Nulla porttitor accumsan tincidunt. Curabitur non nulla sit amet
+              nisl tempus convallis quis ac lectus.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/holo.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        // First initialize as normal carousels
+        Holo.BUILD(document.getElementById('vertical-accordion'))
+        Holo.BUILD(document.getElementById('horizontal-accordion'))
+
+        // Then convert to accordions
+        Holo.toAccordion('vertical-accordion', {
+          orientation: 1, // 1 = vertical
+          expand: 0, // 0 = single panel mode
+          defaultOpen: 0, // First panel open by default
+          animation: 1 // Enable animation
+        })
+
+        Holo.toAccordion('horizontal-accordion', {
+          orientation: 0, // 0 = horizontal
+          expand: 1, // 1 = multiple panels can be open
+          defaultOpen: 0, // First panel open by default
+          animation: 1, // Enable animation
+          headerWidth: 60 // Width of header in pixels
+        })
+
+        // You can also directly build an accordion without conversion:
+        // Holo.BUILD(document.getElementById('vertical-accordion'), {
+        //     accordionMode: 1,
+        //     orientation: 1,
+        //     expand: 0,
+        //     defaultOpen: 0
+        // });
+      })
+    </script>
+  </body>
+</html>

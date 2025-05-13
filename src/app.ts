@@ -8,10 +8,10 @@
 */
 
 import {cyre, CyreLog} from 'cyre'
-import type {HoloIOOptions, HoloVirtual} from './types/interface'
+import type {HoloIOOptions} from './types/interface'
 import {holoCreateElement} from './components/holo-create-element'
 import {_holo} from './libs/holo-essentials'
-import {holoInitiate} from './components/holo-initiate'
+import {holoInitiate} from './components/holo-create-element'
 import {EVENTS, DEFAULT_IO_OPTIONS, CSS_CLASSES} from './config/holo-config'
 import {
   safeEventCall,
@@ -19,7 +19,12 @@ import {
   initializeEventSystem,
   initializeInstanceEvents
 } from './core/holo-events'
-import {handleTouchStart, initializeTouchSystem} from './components/holo-touch'
+import {
+  handleTouchStart,
+  handleNestedTouchStart,
+  injectTouchStyles,
+  initializeTouchSystem
+} from './components/holo-touch'
 import {
   getCurrentSlideIndex,
   updateActiveSlide,
@@ -39,6 +44,31 @@ import {
   goToSlide
 } from './libs/holo-navigation'
 import {initializeDebugTools} from './libs/debug'
+
+// Import new feature modules
+import {
+  registerNestedCarousel,
+  unregisterCarousel,
+  getChildren,
+  getParent,
+  getAncestors,
+  getDescendants
+} from './components/holo-relations'
+import {
+  convertToAccordion,
+  convertToCarousel,
+  toggleAccordion,
+  openAccordionPanel,
+  closeAccordionPanel,
+  injectAccordionStyles
+} from './components/holo-accordion'
+import {
+  initializeDeepLinking,
+  enableDeepLinking,
+  disableDeepLinking,
+  navigateToDeepLink,
+  getDeepLinkPath
+} from './components/holo-deep-link'
 
 // Update the updateCarouselOptions function in app.ts
 
@@ -69,6 +99,16 @@ function updateCarouselOptions(
         cyre.forget(virtual.eventIds.animate)
         CyreLog.info(`Removed existing animation for carousel ${id}`)
       }
+    }
+
+    // Special handling for accordion mode
+    if ('accordionMode' in validOptions && validOptions.accordionMode === 1) {
+      convertToAccordion(id)
+    }
+
+    // Special handling for deep linking
+    if ('deepLinking' in validOptions && validOptions.deepLinking === 1) {
+      enableDeepLinking(id)
     }
 
     // Create updated options
@@ -113,7 +153,7 @@ function getCarouselDimensions(id: string) {
 /**
  * Get carousel state
  */
-function getCarouselState(id: string): HoloVirtual | null {
+function getCarouselState(id: string) {
   if (!_holo[id]) {
     CyreLog.warn(`Carousel with ID ${id} not found`)
     return null
@@ -203,6 +243,10 @@ function setupWindowResizeHandler(): void {
  */
 function initialize(selector: string = CSS_CLASSES.CAROUSEL): string {
   CyreLog.info(`Initializing Holo with selector: ${selector}`)
+
+  // Inject CSS for features
+  injectTouchStyles()
+  injectAccordionStyles()
 
   // Schedule a refresh when everything is loaded
   window.addEventListener('load', () => {
@@ -332,6 +376,53 @@ initializePerformanceMonitoring()
 // Register window resize handler
 setupWindowResizeHandler()
 
+/**
+ * Convert a normal carousel to a nested child
+ */
+function makeNested(childId: string, parentId: string): void {
+  if (!_holo[childId] || !_holo[parentId]) {
+    CyreLog.error(`Invalid carousel IDs for nesting: ${childId}, ${parentId}`)
+    return
+  }
+
+  // Register the relationship
+  registerNestedCarousel(childId, parentId)
+
+  // Update child's options
+  updateCarouselOptions(childId, {
+    nestedMode: 1,
+    wheel: 0 // Disable wheel on nested carousels
+  })
+
+  // Add data attributes
+  const childElement = document.getElementById(childId)
+  if (childElement) {
+    childElement.setAttribute('data-nested', 'true')
+    childElement.setAttribute('data-parent', parentId)
+  }
+
+  CyreLog.info(`Carousel ${childId} is now nested inside ${parentId}`)
+}
+
+/**
+ * Get nested carousel details
+ */
+function getNestedInfo(id: string): {
+  isNested: boolean
+  parent?: string
+  children: string[]
+  ancestors: string[]
+  descendants: string[]
+} {
+  return {
+    isNested: !!getParent(id),
+    parent: getParent(id),
+    children: getChildren(id),
+    ancestors: getAncestors(id),
+    descendants: getDescendants(id)
+  }
+}
+
 // Create and export the Holo API
 const Holo = {
   // Core initialization
@@ -359,6 +450,23 @@ const Holo = {
 
   // Touch handling
   handleTouchStart,
+
+  // Nested carousel features
+  makeNested,
+  getNestedInfo,
+
+  // Accordion features
+  toAccordion: convertToAccordion,
+  toCarousel: convertToCarousel,
+  toggleAccordion,
+  openAccordion: openAccordionPanel,
+  closeAccordion: closeAccordionPanel,
+
+  // Deep linking features
+  enableDeepLinking,
+  disableDeepLinking,
+  getDeepLink: getDeepLinkPath,
+  navigateToDeepLink,
 
   // Constants
   EVENTS

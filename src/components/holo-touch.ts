@@ -1,64 +1,16 @@
 //src/components/holo-touch.ts
 
 import {cyre, CyreLog} from 'cyre'
-import type {HoloVirtual} from '../types/interface'
+import type {HoloVirtual, TouchState} from '../types/interface'
 import {_holo} from '../libs/holo-essentials'
 import {applyTransform} from './orientation-handler'
-import {TOUCH_EVENTS, EVENTS} from '../config/holo-config'
-
-/**
- * TouchState interface for tracking touch interactions
- */
-interface TouchState {
-  id: string | null
-  virtual: HoloVirtual | null
-  startX: number
-  startY: number
-  currentX: number
-  currentY: number
-  lastX: number // Added to track direction more accurately
-  lastY: number // Added to track direction more accurately
-  distanceX: number
-  distanceY: number
-  directionX: number // Added to explicitly track direction (1 = right, -1 = left)
-  directionY: number // Added to explicitly track direction (1 = down, -1 = up)
-  velocityX: number
-  velocityY: number
-  startTransformX: number
-  startTransformY: number
-  pressed: boolean
-  startTime: number
-  multiplier: number
-  orientation: boolean
-  targetElement: HTMLElement | null
-  moved: boolean // Added to differentiate between taps and actual swipes
-}
-
-// Create shared touch state
-const touchState: TouchState = {
-  id: null,
-  virtual: null,
-  startX: 0,
-  startY: 0,
-  currentX: 0,
-  currentY: 0,
-  lastX: 0,
-  lastY: 0,
-  distanceX: 0,
-  distanceY: 0,
-  directionX: 0,
-  directionY: 0,
-  velocityX: 0,
-  velocityY: 0,
-  startTransformX: 0,
-  startTransformY: 0,
-  pressed: false,
-  startTime: 0,
-  multiplier: 1.5,
-  orientation: false,
-  targetElement: null,
-  moved: false
-}
+import {TOUCH_EVENTS, EVENTS, touchState} from '../config/holo-config'
+import {
+  isChildOf,
+  pauseParentCarousels,
+  resumeParentCarousels,
+  getAncestors
+} from './holo-relations'
 
 /**
  * Initialize the touch system with Cyre events
@@ -81,8 +33,8 @@ function registerTouchEventHandlers(): void {
   // Touch start handler
   cyre.on(
     TOUCH_EVENTS.TOUCH_START,
-    (payload: {event: TouchEvent | MouseEvent; id: string}) => {
-      const {event, id} = payload
+    (payload: {event: TouchEvent | MouseEvent; id: string; options?: any}) => {
+      const {event, id, options = {}} = payload
 
       if (!_holo[id]?.getVirtual) {
         CyreLog.error(`No carousel found with ID: ${id}`)
@@ -94,6 +46,14 @@ function registerTouchEventHandlers(): void {
       // Check if touch is disabled in options
       if (virtual.io.drag === 0 && virtual.io.swipe === 0) {
         return
+      }
+
+      // Check if this is a nested carousel
+      const isNested = virtual.nestedLevel > 0 || !!virtual.parentId
+
+      // If nested, pause parent carousel interactions
+      if (isNested) {
+        pauseParentCarousels(id)
       }
 
       // Get initial touch/mouse position
@@ -124,9 +84,13 @@ function registerTouchEventHandlers(): void {
       touchState.orientation = !!virtual.io.orientation
       touchState.targetElement = event.target as HTMLElement
       touchState.moved = false
+      touchState.isNested = isNested
 
       // Disable transitions during drag
       _holo[id].updateStyle = 0
+
+      // Add active touch class
+      document.getElementById(id)?.classList.add('holo-touch-active')
 
       // Continue chain to appropriate drag handler based on orientation
       return {
@@ -262,7 +226,18 @@ function registerTouchEventHandlers(): void {
       velocityY: touchState.velocityY,
       orientation: touchState.orientation,
       startTime: touchState.startTime,
-      moved: touchState.moved // Include the moved flag to distinguish real swipes
+      moved: touchState.moved, // Include the moved flag to distinguish real swipes
+      isNested: touchState.isNested
+    }
+
+    // Remove active touch class
+    document
+      .getElementById(touchState.id)
+      ?.classList.remove('holo-touch-active')
+
+    // If nested, resume parent interactions
+    if (touchState.isNested) {
+      resumeParentCarousels(touchState.id)
     }
 
     // Reset pressed state immediately to prevent further movement
@@ -439,7 +414,7 @@ function registerDomEventListeners(): void {
     )
   }
 
-  // Mouse/touch end handler - IMPORTANT FIX HERE
+  // Mouse/touch end handler
   const handlePointerEnd = (e: MouseEvent | TouchEvent): void => {
     // Only process if we're in a pressed state
     if (!touchState.pressed) return
@@ -462,15 +437,35 @@ function registerDomEventListeners(): void {
 
 /**
  * Public handler for touch/mouse start events
+ * Enhanced to support nested carousels
  */
 export const handleTouchStart = (
   event: MouseEvent | TouchEvent,
-  id: string
+  id: string,
+  options: {stopPropagation?: boolean} = {}
 ): void => {
+  // Prevent default behavior
   event.preventDefault()
 
+  // Stop propagation if requested (needed for nested carousels)
+  if (options.stopPropagation) {
+    event.stopPropagation()
+  }
+
   // Call the touch start event with event info and carousel ID
-  cyre.call(TOUCH_EVENTS.TOUCH_START, {event, id})
+  cyre.call(TOUCH_EVENTS.TOUCH_START, {event, id, options})
+}
+
+/**
+ * Special touch start handler for nested carousels
+ * Always stops propagation
+ */
+export const handleNestedTouchStart = (
+  event: MouseEvent | TouchEvent,
+  id: string
+): void => {
+  event.stopPropagation()
+  handleTouchStart(event, id, {stopPropagation: true})
 }
 
 /**
@@ -486,3 +481,45 @@ const calculateSwipeSpeed = (distance: number, timeElapsed: number): number => {
 const isClickEvent = (timeElapsed: number): boolean => {
   return timeElapsed < 300
 }
+
+/**
+ * Add CSS for touch interactions
+ */
+export const injectTouchStyles = (): void => {
+  if (document.getElementById('holo-touch-styles')) return
+
+  const style = document.createElement('style')
+  style.id = 'holo-touch-styles'
+
+  style.textContent = `
+    /* Base touch styles */
+    .holo-touch-active {
+      cursor: grabbing !important;
+    }
+    
+    /* Nested carousel touch styles */
+    .holo-carousel[data-nested="true"] {
+      touch-action: none;
+      z-index: 2;
+    }
+    
+    /* Parent carousel with active child */
+    .holo-carousel[data-child-active="true"] {
+      pointer-events: none;
+    }
+    
+    .holo-carousel[data-child-active="true"] .holo-container {
+      transition: none !important;
+    }
+    
+    /* But allow child events */
+    .holo-carousel[data-child-active="true"] [data-nested="true"] {
+      pointer-events: auto;
+    }
+  `
+
+  document.head.appendChild(style)
+}
+
+// Inject touch styles on init
+injectTouchStyles()

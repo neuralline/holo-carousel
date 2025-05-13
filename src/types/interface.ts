@@ -40,6 +40,46 @@ export interface HoloIOOptions {
   active: boolean
   onClick: boolean
   onDoubleClick: boolean
+
+  // New options
+  nestedMode?: number // 0 = normal, 1 = allow nested carousels
+  accordionMode?: number // 0 = normal, 1 = accordion mode
+  deepLinking?: number // 0 = disabled, 1 = enabled
+}
+
+/**
+ * Accordion state for tracking open/closed panels
+ */
+export interface AccordionState {
+  openPanels: number[]
+  previouslyOpen?: number[]
+  expandedHeight?: number
+  expandedWidth?: number
+  collapsedHeight?: number
+  collapsedWidth?: number
+}
+
+/**
+ * Accordion options
+ */
+export interface AccordionOptions {
+  mode: number
+  expand: number
+  defaultOpen: number
+  animation: number
+  headerHeight: number
+  headerWidth: number
+}
+
+/**
+ * Deep linking options
+ */
+export interface DeepLinkingOptions {
+  enabled: boolean
+  paramPrefix: string
+  updateHistory: boolean
+  scrollToCarousel: boolean
+  nestedSeparator: string
 }
 
 /**
@@ -63,6 +103,8 @@ export interface HoloVirtual {
   item: HoloItemDimensions
   noOfChildren: number
   startNumber: number
+
+  // Event IDs for this carousel
   eventIds?: {
     animate?: string
     snap?: string
@@ -78,6 +120,19 @@ export interface HoloVirtual {
     dimensionUpdate?: string
     error?: string
   }
+
+  // New feature states
+  accordionState?: AccordionState
+  accordionOptions?: AccordionOptions
+  deepLinkingOptions?: DeepLinkingOptions
+
+  // Nested carousel relationships
+  parentId?: string
+  childIds?: string[]
+  nestedLevel?: number
+
+  // Internal state properties
+  _nestedOriginalSettings?: any
 }
 
 /**
@@ -122,4 +177,52 @@ export interface HoloInstance {
  */
 export interface HoloDatabase {
   [key: string]: HoloInstance
+}
+
+/**
+ * Relationship between parent and child carousels
+ */
+export interface HoloRelationship {
+  id: string
+  parentId?: string
+  childIds: string[]
+  level: number
+}
+/**
+ * TouchState interface for tracking touch interactions
+ */
+export interface TouchState {
+  id: string | null
+  virtual: HoloVirtual | null
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
+  lastX: number // Added to track direction more accurately
+  lastY: number // Added to track direction more accurately
+  distanceX: number
+  distanceY: number
+  directionX: number // Added to explicitly track direction (1 = right, -1 = left)
+  directionY: number // Added to explicitly track direction (1 = down, -1 = up)
+  velocityX: number
+  velocityY: number
+  startTransformX: number
+  startTransformY: number
+  pressed: boolean
+  startTime: number
+  multiplier: number
+  orientation: boolean
+  targetElement: HTMLElement | null
+  moved: boolean // Added to differentiate between taps and actual swipes
+  isNested: boolean // Added to track if this is a nested carousel
+}
+/**
+ * Configuration interface for deep linking
+ */
+export interface DeepLinkingOptions {
+  enabled: boolean
+  paramPrefix: string // Default: 'slide'
+  updateHistory: boolean // Update browser history
+  scrollToCarousel: boolean // Scroll to carousel when navigating via URL
+  nestedSeparator: string // Separator for nested carousel IDs (default: '.')
 }
