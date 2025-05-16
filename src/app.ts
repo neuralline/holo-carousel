@@ -30,7 +30,7 @@ let isInitialized = false
 // Holo Carousel module
 const Holo = (() => {
   // Set up global touch event listeners
-  const touchCleanup = Touch.setupGlobalTouchListeners()
+  const _touchCleanup = Touch.setupGlobalTouchListeners()
 
   /**
    * Update carousel options
@@ -89,7 +89,6 @@ const Holo = (() => {
     )
 
     // Initialize all event handlers (only once)
-    initializeEvents()
 
     // Set up window resize handler
     window.addEventListener(
@@ -99,7 +98,10 @@ const Holo = (() => {
       },
       false
     )
-
+    initializeEvents()
+    window.onload = () => {
+      cyre.call(EVENTS.REFRESH_SCREEN)
+    }
     // Auto-initialize carousels with the specified class
     holoInitiate(carouselClassName)
 
@@ -118,7 +120,7 @@ const Holo = (() => {
 
     // Cleanup function for when Holo is no longer needed
     cleanup: () => {
-      touchCleanup()
+      _touchCleanup()
       window.removeEventListener('resize', () =>
         cyre.call(EVENTS.REFRESH_SCREEN)
       )

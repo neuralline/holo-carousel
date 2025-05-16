@@ -82,9 +82,6 @@ export const setupEventHandlers = (id: string): (() => void) => {
     })
   }
 
-  // Initial refresh
-  refreshCarousel(id)
-
   // Return cleanup function that calls all cleanup handlers
   return () => {
     cleanupFunctions.forEach(cleanup => cleanup())

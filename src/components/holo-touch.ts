@@ -20,7 +20,10 @@ export const _touchStart = (e: TouchEvent | MouseEvent, id: string): void => {
   }
 
   const instance = holoStore.getInstance(id)
-  if (!instance) return
+  if (!instance) {
+    cyre.call(EVENTS.ERROR, '@_touchStart: undefined getInstance fro: ' + id)
+    return
+  }
 
   // Cancel any existing animation
   if (animationFrames[id]) {

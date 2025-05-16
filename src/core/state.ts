@@ -103,7 +103,20 @@ const createHoloStore = () => {
         }
       }
     },
+    // Apply dimensions to DOM elements
+    setDimension: (id: string): void => {
+      const instance = state.instances[id]
+      if (!instance) return
 
+      const {virtualDom, Dom} = instance
+
+      // Apply width/height based on orientation (matching original logic)
+      if (!virtualDom.io.orientation) {
+        Dom.carousel.style.width = `${virtualDom.carousel.width}px`
+      } else {
+        Dom.carousel.style.height = `${virtualDom.carousel.height}px`
+      }
+    },
     // Register a new carousel instance
     registerInstance: (
       id: string,

@@ -28,11 +28,11 @@ let eventsInitialized = false
 export const initializeEvents = (): boolean => {
   // Prevent duplicate registrations
   if (eventsInitialized) {
-    console.log('@Holo: Events already initialized')
+    console.log('@Holo INIT: Events already initialized')
     return false
   }
 
-  console.log('@Holo: Initializing event handlers')
+  console.log('@Holo INIT: Initializing event handlers')
 
   // Setup global actions
   cyre.action([
@@ -48,17 +48,18 @@ export const initializeEvents = (): boolean => {
       const {virtual, dom} = state
 
       if (!virtual.id) {
-        cyre.call(EVENTS.ERROR, 'Holo carousel refresh error ' + virtual.id)
+        console.error('Holo carousel refresh error', virtual.id)
         return
       }
 
+      // Reset styles to measure correctly
       dom.container.setAttribute('style', '')
 
       const {height, width} = _getItemWidthHeight(
         dom.container.children[0] as HTMLElement
       )
 
-      // Update virtual DOM with new dimensions
+      // Create a mutable copy since we're modifying this directly like the original
       const updatedVirtual = {...virtual}
       updatedVirtual.item.height = height
       updatedVirtual.item.width = width
@@ -96,11 +97,18 @@ export const initializeEvents = (): boolean => {
             updatedVirtual.container.width - updatedVirtual.carousel.width
           )
 
-      // Update store
+      // Update store with new dimensions
       holoStore.updateVirtualDom(virtual.id, updatedVirtual)
 
-      // Trigger snap to update positioning
-      cyre.call(EVENTS.SNAP, updatedVirtual)
+      // Apply carousel dimensions to DOM (critical part from original code)
+      if (!updatedVirtual.io.orientation) {
+        dom.carousel.style.width = `${updatedVirtual.carousel.width}px`
+      } else {
+        dom.carousel.style.height = `${updatedVirtual.carousel.height}px`
+      }
+
+      // Call SNAP to update position
+      cyre.call(EVENTS.SNAP, holoStore.getVirtualDom(virtual.id))
     }
   )
 
@@ -145,9 +153,13 @@ export const initializeEvents = (): boolean => {
       const instance = instances[id]
       cyre.call(EVENTS.REFRESH_CAROUSEL, {
         virtual: instance.virtualDom,
-        shadow: instance.Dom
+        dom: instance.Dom
       })
     }
+  })
+
+  cyre.on(EVENTS.ERROR, payload => {
+    console.error(payload)
   })
 
   eventsInitialized = true
@@ -160,13 +172,13 @@ export const initializeEvents = (): boolean => {
 export const refreshCarousel = (id: string): void => {
   const instance = holoStore.getInstance(id)
   if (!instance) {
-    console.error('Holo carousel refresh error:', id)
+    cyre.call(EVENTS.ERROR, 'Holo carousel refresh error: ' + id)
     return
   }
 
   cyre.call(EVENTS.REFRESH_CAROUSEL, {
     virtual: instance.virtualDom,
-    shadow: instance.Dom
+    dom: instance.Dom
   })
 }
 

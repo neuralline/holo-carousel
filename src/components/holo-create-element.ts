@@ -3,6 +3,8 @@
 import {holoStore} from '../core/state'
 import {setupEventHandlers} from './holo-io-manager'
 import {HoloIOOptions} from '../types/interface'
+import cyre from 'cyre'
+import {EVENTS} from '../config/holo-config'
 
 /**
  * Create a carousel instance
@@ -12,7 +14,10 @@ const holoCreateElement = (
   options: Partial<HoloIOOptions> = {}
 ): string => {
   if (!slide) {
-    console.error('@Holo: Cannot create carousel from invalid element')
+    cyre.call(
+      EVENTS.ERROR,
+      '@Holo: Cannot create carousel from invalid element'
+    )
     return ''
   }
 
@@ -25,7 +30,7 @@ const holoCreateElement = (
   )[0] as HTMLElement
 
   if (!container) {
-    console.error('@Holo: holo-container not found:', id)
+    cyre.call(EVENTS.ERROR, '@Holo: holo-container not found: ' + id)
     return ''
   }
 
