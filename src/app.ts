@@ -29,7 +29,7 @@ import {_holo, _getItemWidthHeight} from './components/holo-essentials'
 import holoInitiate from './components/holo-initiate'
 import Touch from './components/holo-touch'
 import {_transformX, _transformY} from './components/orientation-handler'
-import {TouchManager} from './components/touch-manager'
+import {TouchManager} from './components/holo-touch-manager'
 
 const Holo = (() => {
   cyre.on('refresh carousel', state => {
@@ -63,14 +63,14 @@ const Holo = (() => {
       : -Math.abs(virtual.container.width - virtual.carousel.width)
     return (
       (_holo[virtual.id].setDimension = {...virtual}),
-      cyre.call('snap to position', virtual)
+      cyre.call('SNAP', virtual)
     )
   })
 
   //snap to grid
   //manages container
   cyre.on('SNAP', virtual => {
-    if (!virtual.id) return console.error('Holo snap error')
+    if (!virtual.id) return {id: 'holo-error', payload: 'Holo snap error'}
     _holo[virtual.id].updateStyle = 1
     virtual = virtual.io.orientation
       ? _transformY(virtual)
@@ -137,9 +137,9 @@ const Holo = (() => {
     TouchManager(au)
     //init microService
     cyre.action([
-      {id: 'refresh screen', log: true}, //adjust width
+      {id: 'refresh screen', debounce: 300}, //adjust width
       {id: 'refresh carousel'},
-      {id: 'snap to position', type: 'SNAP'}
+      {id: 'holo-error', log: true}
     ])
     cyre.on('SHAKE', _addShake)
 
@@ -152,7 +152,6 @@ const Holo = (() => {
 
   const _refresh = () => {
     for (let id in _holo) {
-      console.log('@holo refreshing : ', id)
       cyre.call('refresh carousel', _holo[id].getState)
     }
   }
@@ -182,4 +181,10 @@ const Holo = (() => {
   }
 })()
 
+// Export for module use
 export default Holo
+
+// Also expose to window for UMD/browser usage
+if (typeof window !== 'undefined') {
+  ;(window as any).Holo = Holo
+}

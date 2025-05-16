@@ -1,10 +1,8 @@
-/** @format */
-
-//src/components/
+//src/components/holo-initiate.ts
 
 import holoCreateElement from './holo-create-element'
 
-//holo Locate all holo carousel structures ByClassName
+//holo find all holo carousel structures ByClassName
 /**
  * @param{string} carouselName get all carousels by this class name
  */

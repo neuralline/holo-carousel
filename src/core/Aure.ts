@@ -5,7 +5,7 @@ class Aure extends HoloCli {
   /*
 
      H.O.L.O - A.U.R.E`
-     aka holo-create-carousel
+     state manager
 
      */
   constructor(slide, io = {}) {
@@ -13,7 +13,7 @@ class Aure extends HoloCli {
     if (!slide) console.error('@Holo: Oh putain` no slide')
 
     // console.log('@Aure`  Initializing slider       ---2.0.1');
-    this.id = slide.id || 'OhPutain' + performance.now()
+    this.id = slide.id || 'OhPutain-' + performance.now()
     this.shadow.carousel = slide
     this.shadow.container =
       this.shadow.carousel.getElementsByClassName('holo-container')[0] || 0

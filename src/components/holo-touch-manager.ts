@@ -1,11 +1,8 @@
-/** @format */
-
-//src/components/
-//@ts-check
-
+//src/components/holo-touch-manager.ts
 import cyre from 'cyre'
 import {
   activate,
+  animate,
   animateSlideBackward,
   animateSlideForward,
   firstSlide,
@@ -42,6 +39,7 @@ const TouchManager = () => {
 
   cyre.on('AnimateForward', animateSlideForward)
   cyre.on('AnimateBackward', animateSlideBackward)
+  cyre.on('Animate', animate)
   cyre.on('nxtSlide', nxtSlide)
   cyre.on('prvSlide', prvSlide)
   cyre.on('firstSlide', firstSlide)

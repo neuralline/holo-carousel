@@ -12,34 +12,41 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1"
+    />
     <link rel="stylesheet" href="css/style.css" />
   </head>
 
   <body>
     <div class="holo-wrapper" id="wrapper">
-      <!-- <carousel class="holo-carousel holo-carousel-style-one " id="au_carousel2" data-sanp='0' data-wheel='0'
-            data-animate='1' data-duration='5000' data-loop='100'>
-            <ul class="holo-container transition" id="au_pack2">
-                <li class="holo transition"><img src="img/25.jpg" /></li>
-                <li class="holo transition"><img src="img/26.jpg" /></li>
-                <li class="holo transition"><img src="img/27.jpg" /></li>
-                <li class="holo transition"><img src="img/28.jpg" /></li>
-                <li class="holo transition"><img src="img/29.jpg" /></li>
-                <li class="holo transition"><img src="img/30.jpg" /></li>
-                <li class="holo transition"><img src="img/31.jpg" /></li>
-                <li class="holo transition"><img src="img/32.jpg" /></li>
-                <li class="holo transition"><img src="img/33.jpg" /></li>
-                <li class="holo transition"><img src="img/34.jpg" /></li>
-            </ul>
-        </carousel> -->
+      <carousel
+        class="holo-carousel holo-carousel-style-one"
+        id="au_carousel2"
+        data-sanp="1"
+        data-wheel="0"
+        data-animate="1"
+        data-duration="5000"
+        data-loop="100"
+      >
+        <ul class="holo-container transition" id="au_pack2">
+          <li class="holo transition"><img src="img/25.jpg" /></li>
+          <li class="holo transition"><img src="img/26.jpg" /></li>
+          <li class="holo transition"><img src="img/27.jpg" /></li>
+          <li class="holo transition"><img src="img/28.jpg" /></li>
+          <li class="holo transition"><img src="img/29.jpg" /></li>
+          <li class="holo transition"><img src="img/30.jpg" /></li>
+          <li class="holo transition"><img src="img/31.jpg" /></li>
+          <li class="holo transition"><img src="img/32.jpg" /></li>
+          <li class="holo transition"><img src="img/33.jpg" /></li>
+          <li class="holo transition"><img src="img/34.jpg" /></li>
+        </ul>
+      </carousel>
 
       <carousel
         class="holo-carousel holo-carousel-style-movie-poster transition"
         id="au_carousel3"
-        data-duration="2000"
-        data-wheel="0"
-        data-loop="20"
       >
         <ul class="holo-container transition">
           <li class="holo transition"><img src="img/24.jpg" /></li>
@@ -64,16 +71,16 @@
         </ul>
       </carousel>
 
-      <script src="./holo.es.js"></script>
+      <script src="js/holo.js"></script>
       <script>
         Holo.INIT()
         Holo.AUTO('holo-carousel')
         Holo.carousel('au_carousel3', {
-          wheel: false,
-          drag: 0,
-          swipe: 0,
-          snap: 0,
-          focus: 0
+          wheel: true,
+          drag: true,
+          swipe: true,
+          snap: true,
+          focus: true
         })
       </script>
     </div>

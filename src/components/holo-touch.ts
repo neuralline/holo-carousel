@@ -1,9 +1,5 @@
-/** @format */
+//src/components/holo-touch.ts
 
-//src/components/
-
-'use strict'
-//@ts-check
 // @git NeuralLine
 // @02/01/2019
 import cyre from 'cyre'
@@ -32,7 +28,8 @@ class TouchClass {
 
   //register if touch/click has occurred
   _touchStart(e = window.event, id = 0) {
-    if (!id || this.pressed) return console.error('Holo touch : not my business')
+    if (!id || this.pressed)
+      return console.error('Holo touch : not my business')
     this.TouchStartTimeStamp = performance.now() //snap timer on touch start
     //reset default
     this.virtual = _holo[id].getVirtual
@@ -57,7 +54,9 @@ class TouchClass {
   _dragScrollHorizontal(e) {
     if (!this.pressed) return {ok: false, data: 'not active'}
     this.distance = this.positionX - this.currentX
-    this.virtual.transformX = this.snapShotWidth - this.distance * this.multiplier || 0
+    this.virtual.transformX =
+      this.snapShotWidth - this.distance * this.multiplier || 0
+
     _holo[this.id].setState = _transformXLite(this.virtual)
     requestAnimationFrame(this._dragScrollHorizontal.bind(this))
   }
@@ -66,7 +65,8 @@ class TouchClass {
   _dragScrollVertical(e) {
     if (!this.pressed) return {ok: false, data: 'not active'}
     this.distance = this.positionY - this.currentY
-    this.virtual.transformY = this.snapShotHeight - this.distance * this.multiplier || 0
+    this.virtual.transformY =
+      this.snapShotHeight - this.distance * this.multiplier || 0
     _holo[this.id].setState = {..._transformY(this.virtual)}
     requestAnimationFrame(this._dragScrollVertical.bind(this))
   }
@@ -81,22 +81,24 @@ class TouchClass {
     const speed = _swipe(this.distance, timeElapsed)
 
     if (speed > 1.2) {
-      cyre.call('nxtSlide' + this.id, this.virtual)
+      cyre.call('nxtSlide', this.virtual)
     } else if (speed < -1.2) {
-      cyre.call('prvSlide' + this.id, this.virtual)
+      cyre.call('prvSlide', this.virtual)
     } else if (_isClicked(timeElapsed)) {
       this.focus(e)
     } else {
-      return cyre.call('SNAP' + this.id, this.virtual)
+      return cyre.call('SNAP', this.virtual)
     }
   }
 
-  //highlight active/ selected slide
+  //highlight active/selected slide and bring them to view
   focus(e) {
     if (!e.target.closest('li.holo')) return false
-    this.targetHoloComponent ? this.targetHoloComponent.classList.remove('active') : false
+    this.targetHoloComponent
+      ? this.targetHoloComponent.classList.remove('active')
+      : false
     this.targetHoloComponent = e.target.closest('li.holo')
-    return cyre.call('activate' + this.id, [this.targetHoloComponent, this.virtual])
+    return cyre.call('activate', [this.targetHoloComponent, this.virtual])
   }
 }
 const Touch = new TouchClass()

@@ -1,6 +1,6 @@
 /** @format */
 
-//src/components/
+//src/components/holo-style.ts
 
 const Style = (_c, type = 0) => {
   if (type) {

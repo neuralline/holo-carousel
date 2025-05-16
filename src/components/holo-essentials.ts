@@ -1,26 +1,19 @@
-/** @format */
-
-//src/components/
+//src/components/holo-essentials.ts
 
 import cyre from 'cyre'
-//@ts-check
+
 /**
 
-     H.O.L.O -  essential functions
+     H.O.L.O -  library of holo essential functions
 
 */
 
 /**
  * @param{object} _holo holo database object
  */
-const _holo = {} //main instance
-/**
- *
- * @param {string} id holo[id]
- * @param {number} x
- * @param {number} y
- * @param {number} z
- */
+
+//track multi instance of holo carousels elements
+const _holo = {} //main instance/state
 
 /**
  *
@@ -82,7 +75,7 @@ const _sliderPosition = virtual => {
 //manage active/highlighted slides
 const activate = ([element, virtual]) => {
   virtual.transformX = -Math.abs(element.offsetLeft)
-  cyre.call('SNAP' + virtual.id, virtual)
+  cyre.call('SNAP', virtual)
   element.classList.add('active')
 }
 
@@ -91,7 +84,7 @@ const prvSlide = virtual => {
   if (virtual.endOfSlide === 1) return //console.error('shake');
   virtual.transformX += virtual.carousel.width || 0
   virtual.transformY += virtual.carousel.height || 0
-  return cyre.call('SNAP' + virtual.id, virtual)
+  return cyre.call('SNAP', virtual)
 }
 
 //next slide operator
@@ -99,7 +92,7 @@ const nxtSlide = virtual => {
   if (virtual.endOfSlide === -1) return //console.error('shake');
   virtual.transformX -= virtual.carousel.width || 0
   virtual.transformY -= virtual.carousel.height || 0
-  return cyre.call('SNAP' + virtual.id, virtual)
+  return cyre.call('SNAP', virtual)
 }
 
 //jump to first slide operator
@@ -107,7 +100,7 @@ const firstSlide = virtual => {
   virtual.transformX = 0
   virtual.transformY = 0
   virtual.endOfSlide = 1
-  return cyre.call('SNAP' + virtual.id, virtual)
+  return cyre.call('SNAP', virtual)
 }
 
 //jump to last slide operator
@@ -115,33 +108,37 @@ const lastSlide = virtual => {
   virtual.transformX = virtual.endOfSlidePosition
   virtual.transformY = virtual.endOfSlidePosition
   virtual.endOfSlide = -1
-  return cyre.call('SNAP' + virtual.id, virtual)
+  return cyre.call('SNAP', virtual)
 }
 
 //animate slides
 const animateSlideForward = virtual => {
-  console.log('animating', virtual)
   if (virtual.endOfSlide === -1) {
-    return cyre.call('firstSlide' + virtual.id, virtual)
+    return cyre.call('firstSlide', virtual)
   }
-  return cyre.call('nxtSlide' + virtual.id, virtual)
+  return cyre.call('nxtSlide', virtual)
 }
 
 const animateSlideBackward = virtual => {
   if (virtual.endOfSlide === 1) {
-    return cyre.call('lastSlide' + virtual.id, virtual)
+    return cyre.call('lastSlide', virtual)
   }
-  return cyre.call('prvSlide' + virtual.id, virtual)
+  return cyre.call('prvSlide', virtual)
+}
+
+const animate = virtual => {
+  cyre.call('AnimateForward')
 }
 
 //mouse 3rd button 'wheel' controller
 const wheeler = (e, id) => {
   e.preventDefault()
+  console.log('wheeler', id)
   const virtual = _holo[id].getVirtual
   if (e.deltaY < 0) {
-    cyre.call('prvSlide' + virtual.id, virtual)
+    cyre.call('prvSlide', virtual)
   } else if (e.deltaY > 0) {
-    cyre.call('nxtSlide' + virtual.id, virtual)
+    cyre.call('nxtSlide', virtual)
   }
 }
 
@@ -156,6 +153,7 @@ export {
   wheeler,
   animateSlideBackward,
   animateSlideForward,
+  animate,
   lastSlide,
   firstSlide,
   nxtSlide,
