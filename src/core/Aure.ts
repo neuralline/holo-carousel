@@ -1,4 +1,4 @@
-//src/components/core
+//src/core/aure.ts
 import HoloCli from './holo-cli'
 
 class Aure extends HoloCli {

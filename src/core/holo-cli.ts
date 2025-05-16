@@ -1,4 +1,4 @@
-//src/components/core
+//src/core/holo-cli.ts
 
 class HoloCli {
   /*
