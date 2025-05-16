@@ -1,162 +1,251 @@
 //src/components/holo-essentials.ts
 
 import cyre from 'cyre'
+import {VirtualDomState, SlidePosition} from '../types/interface'
+import {holoStore} from '../core/state'
+import {EVENTS} from '../config/holo-config'
 
 /**
-
-     H.O.L.O -  library of holo essential functions
-
-*/
-
-/**
- * @param{object} _holo holo database object
+ * Calculate snap position for grid alignment
  */
-
-//track multi instance of holo carousels elements
-const _holo = {} //main instance/state
-
-/**
- *
- * @param {number} parent parent width
- * @param {number} item child width
- */
-const _snap = (parent, item) => {
+export const _snap = (parent: number, item: number): number => {
   return Math.round(parent / item) * item
 }
 
-const _isClicked = timeElapsed => {
-  return timeElapsed < 250 ? 1 : 0 ///handle click, touch, double click or long-touch events
+/**
+ * Determine if a touch interaction is a click based on duration
+ */
+export const _isClicked = (timeElapsed: number): boolean => {
+  return timeElapsed < 250
 }
 
 /**
- *
- * @param {number} distance
- * @param {number} timeElapsed
+ * Calculate swipe velocity
  */
-const _swipe = (distance, timeElapsed) => {
+export const _swipe = (distance: number, timeElapsed: number): number => {
   return distance / timeElapsed
 }
 
-const ioData = (carouselParameter = {}, io = {}) => {
-  //input output data
+/**
+ * Merge options into carousel parameters
+ */
+export const ioData = (
+  carouselParameter: Record<string, any> = {},
+  io: Record<string, any> = {}
+): Record<string, any> => {
   for (const attribute in io) {
-    carouselParameter[attribute]
-      ? (carouselParameter[attribute] = io[attribute])
-      : console.error('@Holo: unknown carousel Parameter', attribute)
+    if (carouselParameter[attribute]) {
+      carouselParameter[attribute] = io[attribute]
+    } else {
+      console.error('@Holo: unknown carousel Parameter', attribute)
+    }
   }
   return carouselParameter
 }
 
-//pure function
-const _getItemWidthHeight = e => {
-  if (!e) return 0
-  const outer = {}
-  outer.width = e.offsetWidth
-  outer.height = e.offsetHeight
+/**
+ * Get width and height of an element including margins
+ */
+export const _getItemWidthHeight = (
+  e: HTMLElement | null
+): {width: number; height: number} => {
+  if (!e) return {width: 0, height: 0}
+
+  const outer = {
+    width: e.offsetWidth,
+    height: e.offsetHeight
+  }
+
   const style = window.getComputedStyle(e, null)
   outer.width += parseInt(style.marginLeft) + parseInt(style.marginRight)
   outer.height += parseInt(style.marginTop) + parseInt(style.marginBottom)
+
   return outer
 }
 
-const _sliderPosition = virtual => {
-  if (virtual.transform >= 100) {
-    virtual.transform = 100
-    virtual.endOfSlide = 1 //Left EnD of the carousel
-  } else if (virtual.transform + 100 <= virtual.endOfSlidePosition) {
-    virtual.transform = virtual.endOfSlidePosition - 100
-    virtual.endOfSlide = -1 //Right end of the carousel
+/**
+ * Calculate slider position and handle boundaries
+ */
+export const _sliderPosition = (
+  virtualDom: VirtualDomState
+): VirtualDomState => {
+  const updated = {...virtualDom}
+
+  if (updated.transform >= 100) {
+    updated.transform = 100
+    updated.endOfSlide = 1 // Left end of the carousel
+  } else if (updated.transform + 100 <= updated.endOfSlidePosition) {
+    updated.transform = updated.endOfSlidePosition - 100
+    updated.endOfSlide = -1 // Right end of the carousel
   } else {
-    virtual.endOfSlide = 0 //in the middle carousel
+    updated.endOfSlide = 0 // In the middle of carousel
   }
-  return virtual
+
+  return updated
 }
 
-//manage active/highlighted slides
-const activate = ([element, virtual]) => {
-  virtual.transformX = -Math.abs(element.offsetLeft)
-  cyre.call('SNAP', virtual)
+/**
+ * Manage active/highlighted slides
+ */
+export const activate = ([element, virtualDom]: [
+  HTMLElement,
+  VirtualDomState
+]): void => {
+  const id = virtualDom.id
+  const updatedVirtual = {
+    ...virtualDom,
+    transformX: -Math.abs(element.offsetLeft)
+  }
+
+  // Update store
+  holoStore.updateVirtualDom(id, updatedVirtual)
+
+  // Call Cyre event
+  cyre.call(EVENTS.SNAP, updatedVirtual)
+
+  // Add active class
   element.classList.add('active')
 }
 
-//previous slide operator
-const prvSlide = virtual => {
-  if (virtual.endOfSlide === 1) return //console.error('shake');
-  virtual.transformX += virtual.carousel.width || 0
-  virtual.transformY += virtual.carousel.height || 0
-  return cyre.call('SNAP', virtual)
-}
+/**
+ * Previous slide operator
+ */
+export const prvSlide = (virtualDom: VirtualDomState): void => {
+  const id = virtualDom.id
 
-//next slide operator
-const nxtSlide = virtual => {
-  if (virtual.endOfSlide === -1) return //console.error('shake');
-  virtual.transformX -= virtual.carousel.width || 0
-  virtual.transformY -= virtual.carousel.height || 0
-  return cyre.call('SNAP', virtual)
-}
+  if (virtualDom.endOfSlide === 1) return // At left end already
 
-//jump to first slide operator
-const firstSlide = virtual => {
-  virtual.transformX = 0
-  virtual.transformY = 0
-  virtual.endOfSlide = 1
-  return cyre.call('SNAP', virtual)
-}
-
-//jump to last slide operator
-const lastSlide = virtual => {
-  virtual.transformX = virtual.endOfSlidePosition
-  virtual.transformY = virtual.endOfSlidePosition
-  virtual.endOfSlide = -1
-  return cyre.call('SNAP', virtual)
-}
-
-//animate slides
-const animateSlideForward = virtual => {
-  if (virtual.endOfSlide === -1) {
-    return cyre.call('firstSlide', virtual)
+  const updatedVirtual = {
+    ...virtualDom,
+    transformX: virtualDom.transformX + (virtualDom.carousel.width || 0),
+    transformY: virtualDom.transformY + (virtualDom.carousel.height || 0)
   }
-  return cyre.call('nxtSlide', virtual)
+
+  // Update store
+  holoStore.updateVirtualDom(id, updatedVirtual)
+
+  // Call Cyre event
+  cyre.call(EVENTS.SNAP, updatedVirtual)
 }
 
-const animateSlideBackward = virtual => {
-  if (virtual.endOfSlide === 1) {
-    return cyre.call('lastSlide', virtual)
+/**
+ * Next slide operator
+ */
+export const nxtSlide = (virtualDom: VirtualDomState): void => {
+  const id = virtualDom.id
+
+  if (virtualDom.endOfSlide === -1) return // At right end already
+
+  const updatedVirtual = {
+    ...virtualDom,
+    transformX: virtualDom.transformX - (virtualDom.carousel.width || 0),
+    transformY: virtualDom.transformY - (virtualDom.carousel.height || 0)
   }
-  return cyre.call('prvSlide', virtual)
+
+  // Update store
+  holoStore.updateVirtualDom(id, updatedVirtual)
+
+  // Call Cyre event
+  cyre.call(EVENTS.SNAP, updatedVirtual)
 }
 
-const animate = virtual => {
-  cyre.call('AnimateForward')
+/**
+ * Jump to first slide operator
+ */
+export const firstSlide = (virtualDom: VirtualDomState): void => {
+  const id = virtualDom.id
+
+  const updatedVirtual = {
+    ...virtualDom,
+    transformX: 0,
+    transformY: 0,
+    endOfSlide: 1
+  }
+
+  // Update store
+  holoStore.updateVirtualDom(id, updatedVirtual)
+
+  // Call Cyre event
+  cyre.call(EVENTS.SNAP, updatedVirtual)
 }
 
-//mouse 3rd button 'wheel' controller
-const wheeler = (e, id) => {
+/**
+ * Jump to last slide operator
+ */
+export const lastSlide = (virtualDom: VirtualDomState): void => {
+  const id = virtualDom.id
+
+  const updatedVirtual = {
+    ...virtualDom,
+    transformX: virtualDom.endOfSlidePosition,
+    transformY: virtualDom.endOfSlidePosition,
+    endOfSlide: -1
+  }
+
+  // Update store
+  holoStore.updateVirtualDom(id, updatedVirtual)
+
+  // Call Cyre event
+  cyre.call(EVENTS.SNAP, updatedVirtual)
+}
+
+/**
+ * Animate slides forward
+ */
+export const animateSlideForward = (virtualDom: VirtualDomState): void => {
+  if (virtualDom.endOfSlide === -1) {
+    return cyre.call(EVENTS.FIRST_SLIDE, virtualDom)
+  }
+  return cyre.call(EVENTS.NEXT_SLIDE, virtualDom)
+}
+
+/**
+ * Animate slides backward
+ */
+export const animateSlideBackward = (virtualDom: VirtualDomState): void => {
+  if (virtualDom.endOfSlide === 1) {
+    return cyre.call(EVENTS.LAST_SLIDE, virtualDom)
+  }
+  return cyre.call(EVENTS.PREV_SLIDE, virtualDom)
+}
+
+/**
+ * Handle animation
+ */
+export const animate = (virtualDom: VirtualDomState): void => {
+  cyre.call(EVENTS.ANIMATE_FORWARD)
+}
+
+/**
+ * Mouse wheel controller
+ */
+export const wheeler = (e: WheelEvent, id: string): void => {
   e.preventDefault()
-  console.log('wheeler', id)
-  const virtual = _holo[id].getVirtual
+
+  const virtualDom = holoStore.getVirtualDom(id)
+  if (!virtualDom)
+    return cyre.call(EVENTS.ERROR, '@Wheeler virtual dom undefined')
+
   if (e.deltaY < 0) {
-    cyre.call('prvSlide', virtual)
+    cyre.call(EVENTS.PREV_SLIDE, virtualDom)
   } else if (e.deltaY > 0) {
-    cyre.call('nxtSlide', virtual)
+    cyre.call(EVENTS.NEXT_SLIDE, virtualDom)
   }
 }
 
-export {
-  _holo,
-  _snap,
-  _isClicked,
-  _sliderPosition,
-  _swipe,
-  ioData,
-  _getItemWidthHeight,
-  wheeler,
-  animateSlideBackward,
-  animateSlideForward,
-  animate,
-  lastSlide,
-  firstSlide,
-  nxtSlide,
-  prvSlide,
-  activate
+/**
+ * Calculate number of slots based on parent width and item width
+ */
+export const _numberOfSlots = (
+  parent: number,
+  item: number,
+  max: number
+): number => {
+  let slots = Math.floor(parent / item)
+
+  if (max && slots > max) {
+    return max
+  }
+
+  return slots || 1
 }

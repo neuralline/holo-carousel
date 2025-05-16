@@ -1,54 +1,81 @@
-//src/components/orientation-handler
+//src/components/orientation-handler.ts
 
+import {VirtualDomState} from '../types/interface'
 import {_snap} from './holo-essentials'
-/**
- *
- * @param {object} virtual
- */
-export const _transformX = virtual => {
-  virtual.transformX = virtual.io.snap
-    ? _snap(virtual.transformX, virtual.item.width)
-    : virtual.transformX
-  virtual.transformY = 0
-  if (virtual.transformX >= 0) {
-    virtual.transformX = 0
-    virtual.endOfSlide = 1 //Left EnD of the carousel
-  } else if (virtual.transformX <= virtual.endOfSlidePosition) {
-    virtual.transformX = virtual.endOfSlidePosition
-    virtual.endOfSlide = -1 //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0 //in the middle carousel
-  }
-  return virtual
-}
 
-export const _transformXLite = virtual => {
-  virtual.transformY = 0
-  if (virtual.transformX >= 0) {
-    virtual.transformX = 0
-  } else if (virtual.transformX <= virtual.endOfSlidePosition) {
-    virtual.transformX = virtual.endOfSlidePosition
+/**
+ * Transform carousel horizontally with boundary checks
+ */
+export const _transformX = (virtualDom: VirtualDomState): VirtualDomState => {
+  const updated = {...virtualDom}
+
+  // Apply snap if enabled
+  updated.transformX = updated.io.snap
+    ? _snap(updated.transformX, updated.item.width || 0)
+    : updated.transformX
+
+  // Reset vertical position
+  updated.transformY = 0
+
+  // Handle boundaries
+  if (updated.transformX >= 0) {
+    updated.transformX = 0
+    updated.endOfSlide = 1 // Left end of the carousel
+  } else if (updated.transformX <= updated.endOfSlidePosition) {
+    updated.transformX = updated.endOfSlidePosition
+    updated.endOfSlide = -1 // Right end of the carousel
+  } else {
+    updated.endOfSlide = 0 // In the middle of carousel
   }
-  return virtual
+
+  return updated
 }
 
 /**
- *
- * @param {object} virtual
+ * Transform carousel horizontally without snap (for smooth dragging)
  */
-export const _transformY = virtual => {
-  virtual.transformY = virtual.io.snap
-    ? _snap(virtual.transformY, virtual.item.height)
-    : virtual.transformY
-  virtual.transformX = 0
-  if (virtual.transformY >= 0) {
-    virtual.transformY = 0
-    virtual.endOfSlide = 1 //Left EnD of the carousel
-  } else if (virtual.transformY <= virtual.endOfSlidePosition) {
-    virtual.transformY = virtual.endOfSlidePosition
-    virtual.endOfSlide = -1 //Right end of the carousel
-  } else {
-    virtual.endOfSlide = 0 //in the middle carousel
+export const _transformXLite = (
+  virtualDom: VirtualDomState
+): VirtualDomState => {
+  const updated = {...virtualDom}
+
+  // Reset vertical position
+  updated.transformY = 0
+
+  // Handle boundaries without snap
+  if (updated.transformX >= 0) {
+    updated.transformX = 0
+  } else if (updated.transformX <= updated.endOfSlidePosition) {
+    updated.transformX = updated.endOfSlidePosition
   }
-  return virtual
+
+  return updated
+}
+
+/**
+ * Transform carousel vertically with boundary checks
+ */
+export const _transformY = (virtualDom: VirtualDomState): VirtualDomState => {
+  const updated = {...virtualDom}
+
+  // Apply snap if enabled
+  updated.transformY = updated.io.snap
+    ? _snap(updated.transformY, updated.item.height || 0)
+    : updated.transformY
+
+  // Reset horizontal position
+  updated.transformX = 0
+
+  // Handle boundaries
+  if (updated.transformY >= 0) {
+    updated.transformY = 0
+    updated.endOfSlide = 1 // Top end of the carousel
+  } else if (updated.transformY <= updated.endOfSlidePosition) {
+    updated.transformY = updated.endOfSlidePosition
+    updated.endOfSlide = -1 // Bottom end of the carousel
+  } else {
+    updated.endOfSlide = 0 // In the middle of carousel
+  }
+
+  return updated
 }

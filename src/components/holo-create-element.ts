@@ -1,16 +1,41 @@
-//src/components/create-holo-element.ts
+//src/components/holo-create-element.ts
 
-import Aure from '../core/Aure'
-import {_holo} from './holo-essentials'
-import ManageIO from './holo-io-manager'
+import {holoStore} from '../core/state'
+import {setupEventHandlers} from './holo-io-manager'
+import {HoloIOOptions} from '../types/interface'
+
 /**
-@param{slide} slide single element of halo
-@param{io} io holo input output parameters/options
-*/
-const holoCreateElement = (slide, io) => {
-  //create a single element of holo
-  _holo[slide.id] = new Aure(slide, io) //register found carousels
+ * Create a carousel instance
+ */
+const holoCreateElement = (
+  slide: HTMLElement,
+  options: Partial<HoloIOOptions> = {}
+): string => {
+  if (!slide) {
+    console.error('@Holo: Cannot create carousel from invalid element')
+    return ''
+  }
 
-  ManageIO(_holo[slide.id].getVirtual, _holo[slide.id].getShadow)
+  // Generate ID if not provided
+  const id = slide.id || `holo-${Date.now()}`
+
+  // Find container element
+  const container = slide.getElementsByClassName(
+    'holo-container'
+  )[0] as HTMLElement
+
+  if (!container) {
+    console.error('@Holo: holo-container not found:', id)
+    return ''
+  }
+
+  // Register carousel in store
+  holoStore.registerInstance(id, {carousel: slide, container}, options)
+
+  // Setup event handlers
+  setupEventHandlers(id)
+
+  return id
 }
+
 export default holoCreateElement

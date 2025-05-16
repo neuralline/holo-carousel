@@ -1,114 +1,96 @@
-// src/components/holo-io-manager
+//src/components/holo-io-manager.ts
+
 import cyre from 'cyre'
+import {VirtualDomState} from '../types/interface'
+import {holoStore} from '../core/state'
 import Touch from './holo-touch'
-import {
-  activate,
-  animate,
-  animateSlideBackward,
-  animateSlideForward,
-  firstSlide,
-  lastSlide,
-  nxtSlide,
-  prvSlide,
-  wheeler
-} from './holo-essentials'
+import {wheeler} from './holo-essentials'
+import {EVENTS} from '../config/holo-config'
+import {setupCarouselActions, refreshCarousel} from '../core/event-manager'
 
 /**
- *
- * @param {object} virtualDom  holo[id].virtual
- * @param {object} Dom  holo[id].shadow
+ * Setup all event handlers and listeners for a carousel
  */
-
-const ManageIO = (virtualDom, Dom) => {
-  if (!virtualDom) return console.error('@Holo : Major malfunction!')
-  cyre.action([
-    {
-      id: 'Animate',
-      payload: virtualDom,
-      interval: 5000,
-      repeat: true
-    },
-    {
-      id: 'AnimateBackward',
-      payload: virtualDom,
-      interval: virtualDom.io.duration,
-      repeat: virtualDom.io.loop
-    },
-    {
-      id: 'AnimateForward',
-      payload: virtualDom,
-      interval: virtualDom.io.duration,
-      repeat: virtualDom.io.loop
-    },
-    {
-      id: 'SNAP',
-      payload: virtualDom
-    },
-    {
-      id: 'prvSlide',
-      payload: virtualDom
-    },
-    {
-      id: 'nxtSlide',
-      payload: virtualDom
-    },
-    {
-      id: 'lastSlide',
-      payload: virtualDom
-    },
-    {
-      id: 'firstSlide',
-      payload: virtualDom
-    },
-    {
-      id: 'activate',
-      payload: virtualDom
-    }
-  ])
-  cyre.on('AnimateForward', animateSlideForward)
-  cyre.on('AnimateBackward', animateSlideBackward)
-  cyre.on('Animate', animate)
-  cyre.on('nxtSlide', nxtSlide)
-  cyre.on('prvSlide', prvSlide)
-  cyre.on('firstSlide', firstSlide)
-  cyre.on('lastSlide', lastSlide)
-  cyre.on('bringToFocus', Touch.focus)
-  cyre.on('wheeler', wheeler)
-  cyre.on('activate', activate)
-
-  if (virtualDom.io.enabled) {
-    virtualDom.io.drag
-      ? Dom.container.addEventListener('mousedown', e => {
-          e.preventDefault()
-          Touch._touchStart(e, virtualDom.id)
-        })
-      : false
-
-    virtualDom.io.drag
-      ? Dom.container.addEventListener('touchstart', e => {
-          e.preventDefault()
-          Touch._touchStart(e, virtualDom.id)
-        })
-      : false
-
-    virtualDom.io.wheel
-      ? Dom.carousel.addEventListener('wheel', e => {
-          wheeler(e, virtualDom.id)
-        })
-      : false
-
-    virtualDom.io.animate ? cyre.call('Animate', virtualDom) : false
-
-    Dom.container.addEventListener(
-      //when window resizes do something
-      'resize',
-      () => {
-        cyre.call('refresh carousel', {virtual: virtualDom, shadow: Dom})
-      },
-      false
+export const setupEventHandlers = (id: string): (() => void) => {
+  const instance = holoStore.getInstance(id)
+  if (!instance) {
+    cyre.call(
+      EVENTS.ERROR,
+      '@Holo: Cannot setup events handler for missing carousel: ' + id
     )
+    return () => {}
   }
 
-  cyre.call('refresh carousel', {virtual: virtualDom, shadow: Dom})
+  const {virtualDom, Dom} = instance
+
+  // Setup carousel-specific actions
+  setupCarouselActions(id, virtualDom)
+
+  // Store event listeners for cleanup
+  const cleanupFunctions: Array<() => void> = []
+
+  // Only setup listeners if enabled
+  if (virtualDom.io.enabled) {
+    // Drag event listeners
+    if (virtualDom.io.drag && Dom.container) {
+      const handleMouseDown = (e: MouseEvent) => {
+        e.preventDefault()
+        Touch._touchStart(e, id)
+      }
+
+      const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault()
+        Touch._touchStart(e, id)
+      }
+
+      Dom.container.addEventListener('mousedown', handleMouseDown)
+      Dom.container.addEventListener('touchstart', handleTouchStart)
+
+      cleanupFunctions.push(() => {
+        Dom.container.removeEventListener('mousedown', handleMouseDown)
+        Dom.container.removeEventListener('touchstart', handleTouchStart)
+      })
+    }
+
+    // Wheel event listener
+    if (virtualDom.io.wheel && Dom.carousel) {
+      const handleWheel = (e: WheelEvent) => {
+        wheeler(e, id)
+      }
+
+      Dom.carousel.addEventListener('wheel', handleWheel)
+
+      cleanupFunctions.push(() => {
+        Dom.carousel.removeEventListener('wheel', handleWheel)
+      })
+    }
+
+    // Start animation if enabled
+    if (virtualDom.io.animate) {
+      cyre.call(EVENTS.ANIMATE, virtualDom)
+    }
+
+    // Resize listener
+    const handleResize = () => {
+      refreshCarousel(id)
+    }
+
+    Dom.container.addEventListener('resize', handleResize)
+
+    cleanupFunctions.push(() => {
+      Dom.container.removeEventListener('resize', handleResize)
+    })
+  }
+
+  // Initial refresh
+  refreshCarousel(id)
+
+  // Return cleanup function that calls all cleanup handlers
+  return () => {
+    cleanupFunctions.forEach(cleanup => cleanup())
+  }
 }
-export default ManageIO
+
+export default {
+  setupEventHandlers
+}

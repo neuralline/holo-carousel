@@ -1,20 +1,25 @@
 //src/components/holo-initiate.ts
 
+import cyre from 'cyre'
 import holoCreateElement from './holo-create-element'
+import {EVENTS} from '@/config/holo-config'
 
-//holo find all holo carousel structures ByClassName
 /**
- * @param{string} carouselName get all carousels by this class name
+ * Initialize all carousels with a specific class name
  */
-const holoInitiate = carouselName => {
-  console.log('@holo holo auto activated :', carouselName)
+const holoInitiate = (carouselName: string): void => {
+  console.log('@holo: auto activated:', carouselName)
+
   const carousels = document.getElementsByClassName(carouselName)
+
   if (carousels.length) {
-    for (let slide of carousels) {
+    for (let i = 0; i < carousels.length; i++) {
+      const slide = carousels[i] as HTMLElement
       holoCreateElement(slide, {})
     }
   } else {
-    return console.log('@Holo : carousel structure not found')
+    cyre.call(EVENTS.ERROR, '@Holo: carousel structure not found')
   }
 }
+
 export default holoInitiate
