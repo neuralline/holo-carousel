@@ -1,303 +1,286 @@
 //src/components/holo-touch.ts
 
-import cyre from 'cyre'
-import {VirtualDomState, TouchState} from '../types/interface'
+import {log} from 'cyre'
 import {holoStore} from '../core/state'
-import {_isClicked, _swipe} from './holo-essentials'
-import {_transformXLite, _transformY} from './orientation-handler'
-import {EVENTS} from '../config/holo-config'
+import {setHold} from '../core/event-manager'
+import {
+  releaseIndex,
+  releaseVelocity,
+  rubberBand,
+  goTo,
+  renderState,
+  changeOf,
+  nearestIndex
+} from './holo-essentials'
+import {CSS_CLASSES, EVENTS, GESTURE} from '../config/holo-config'
 
-// Track animation frames for cleanup
-const animationFrames: Record<string, number> = {}
+/*
+  One pointer path for mouse, touch and pen (Pointer Events).
+
+  - The carousel only takes the gesture once it is clearly along its
+    axis; a gesture across it is left to the page, so a horizontal
+    carousel never blocks scrolling the page on a phone (the CSS sets
+    touch-action: pan-y, pan-x for vertical ones).
+  - The drag follows the finger 1:1 and pulls with resistance past
+    either end.
+  - On release a flick carries on by its speed; a slow release snaps to
+    the nearest item.
+  - The click that ends a drag is swallowed, so a link or a focusable
+    item under the pointer does not fire.
+*/
+
+const axisOf = (vertical: boolean, x: number, y: number) =>
+  vertical ? {main: y, cross: x} : {main: x, cross: y}
+
+/** apply the dragged position at most once per frame */
+const scheduleFrame = (id: string): void => {
+  const instance = holoStore.getInstance(id)
+  if (!instance || instance.frame) return
+  holoStore.setFrame(
+    id,
+    requestAnimationFrame(() => {
+      holoStore.setFrame(id, 0)
+      holoStore.applyDomTransform(id)
+    })
+  )
+}
+
+const cancelFrame = (id: string): void => {
+  const instance = holoStore.getInstance(id)
+  if (!instance || !instance.frame) return
+  cancelAnimationFrame(instance.frame)
+  holoStore.setFrame(id, 0)
+}
 
 /**
- * Handle touch/mouse start event
+ * Handle pointer down on a carousel
  */
-export const _touchStart = (e: TouchEvent | MouseEvent, id: string): void => {
+export const _touchStart = (e: PointerEvent, id: string): void => {
   if (!id) {
-    cyre.call(EVENTS.ERROR, '@_touchStart: missing carousel ID')
+    log.error('@_touchStart: missing carousel ID')
     return
   }
 
   const instance = holoStore.getInstance(id)
   if (!instance) {
-    cyre.call(EVENTS.ERROR, '@_touchStart: undefined getInstance fro: ' + id)
+    log.error('@_touchStart: undefined getInstance for: ' + id)
     return
   }
 
-  // Cancel any existing animation
-  if (animationFrames[id]) {
-    cancelAnimationFrame(animationFrames[id])
-    delete animationFrames[id]
-  }
+  const {io} = instance.virtualDom
+  const mouse = e.pointerType === 'mouse'
+  if (!io.enabled || (mouse ? !io.drag || e.button !== 0 : !io.swipe)) return
+  if (holoStore.getSystem().pressedId) return // one gesture at a time
 
-  // Get client coordinates
-  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-  const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+  // a mouse would otherwise start dragging the image or selecting text
+  if (mouse) e.preventDefault()
 
-  // Update touch state
-  const touchState: TouchState = {
+  cancelFrame(id)
+  const vertical = !!io.orientation
+  const now = performance.now()
+  const start = vertical
+    ? instance.virtualDom.transformY
+    : instance.virtualDom.transformX
+
+  holoStore.updateTouchState(id, {
     pressed: true,
-    positionX: clientX,
-    positionY: clientY,
-    currentX: clientX,
-    currentY: clientY,
-    TouchStartTimeStamp: performance.now(),
-    multiplier: 1.482,
+    dragging: false,
+    cancelled: false,
+    pointerId: e.pointerId,
+    positionX: e.clientX,
+    positionY: e.clientY,
+    currentX: e.clientX,
+    currentY: e.clientY,
+    distance: 0,
+    TouchStartTimeStamp: now,
     snapShotWidth: instance.virtualDom.transformX || 0,
-    snapShotHeight: instance.virtualDom.transformY || 0
-  }
-
-  holoStore.updateTouchState(id, touchState)
-  holoStore.updateStyle(id, false)
-
-  // Start appropriate drag handler based on orientation
-  if (instance.virtualDom.io.orientation) {
-    _dragScrollVertical(id)
-    e.preventDefault()
-  } else {
-    _dragScrollHorizontal(id)
-    e.preventDefault()
-  }
-}
-
-/**
- * Handle horizontal drag movement
- */
-export const _dragScrollHorizontal = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance || !instance.touchState.pressed) return
-
-  const {touchState, virtualDom} = instance
-
-  // Calculate distance moved
-  const distance = touchState.positionX - touchState.currentX
-
-  // Update virtual DOM for horizontal movement
-  const newTransformX =
-    (touchState.snapShotWidth || 0) - distance * touchState.multiplier
-  const updatedVirtual = _transformXLite({
-    ...virtualDom,
-    transformX: newTransformX
+    snapShotHeight: instance.virtualDom.transformY || 0,
+    samples: [[now, start]],
+    suppressClick: false
   })
-
-  // Update store
-  holoStore.updateVirtualDom(id, updatedVirtual)
-  holoStore.updateTouchState(id, {distance})
-
-  // Apply DOM transform
-  holoStore.applyDomTransform(id)
-
-  // Continue animation if still pressed
-  if (instance.touchState.pressed) {
-    animationFrames[id] = requestAnimationFrame(() => _dragScrollHorizontal(id))
-  }
+  holoStore.updateSystem({pressedId: id})
 }
 
 /**
- * Handle vertical drag movement
+ * Handle pointer movement (document-wide while pressed)
  */
-export const _dragScrollVertical = (id: string): void => {
+export const _touchMove = (e: PointerEvent): void => {
+  const id = holoStore.getSystem().pressedId
+  if (!id) return
   const instance = holoStore.getInstance(id)
-  if (!instance || !instance.touchState.pressed) return
-
-  const {touchState, virtualDom} = instance
-
-  // Calculate distance moved
-  const distance = touchState.positionY - touchState.currentY
-
-  // Update virtual DOM for vertical movement
-  const newTransformY =
-    (touchState.snapShotHeight || 0) - distance * touchState.multiplier
-  const updatedVirtual = _transformY({
-    ...virtualDom,
-    transformY: newTransformY
-  })
-
-  // Update store
-  holoStore.updateVirtualDom(id, updatedVirtual)
-  holoStore.updateTouchState(id, {distance})
-
-  // Apply DOM transform
-  holoStore.applyDomTransform(id)
-
-  // Continue animation if still pressed
-  if (instance.touchState.pressed) {
-    animationFrames[id] = requestAnimationFrame(() => _dragScrollVertical(id))
-  }
-}
-
-/**
- * Handle touch/mouse end event
- */
-export const _touchEnd = (e: TouchEvent | MouseEvent): void => {
-  // Find the active carousel
-  const instances = holoStore.getAllInstances()
-  let activeId: string | null = null
-
-  for (const id in instances) {
-    if (instances[id].touchState.pressed) {
-      activeId = id
-      break
-    }
-  }
-
-  if (!activeId) return
-
-  const instance = holoStore.getInstance(activeId)
   if (!instance) return
+  const {touchState, virtualDom, Dom} = instance
+  if (e.pointerId !== touchState.pointerId || touchState.cancelled) return
 
-  e.preventDefault()
+  const vertical = !!virtualDom.io.orientation
+  const {main, cross} = axisOf(
+    vertical,
+    e.clientX - touchState.positionX,
+    e.clientY - touchState.positionY
+  )
+  touchState.currentX = e.clientX
+  touchState.currentY = e.clientY
 
-  // Cancel animation frame
-  if (animationFrames[activeId]) {
-    cancelAnimationFrame(animationFrames[activeId])
-    delete animationFrames[activeId]
+  if (!touchState.dragging) {
+    if (Math.abs(main) < GESTURE.SLOP && Math.abs(cross) < GESTURE.SLOP) return
+    if (Math.abs(cross) > Math.abs(main)) {
+      // across the carousel: the page scrolls, Holo lets go
+      touchState.cancelled = true
+      _release(id)
+      return
+    }
+    touchState.dragging = true
+    Dom.carousel.classList.add(CSS_CLASSES.DRAGGING)
+    try {
+      Dom.container.setPointerCapture(e.pointerId)
+    } catch {
+      // the pointer may already be gone
+    }
+    holoStore.updateStyle(id, false)
+    setHold(id, 'pointer', true)
   }
 
-  // Mark as no longer pressed
-  holoStore.updateTouchState(activeId, {pressed: false})
+  if (e.cancelable) e.preventDefault()
 
-  const {touchState, virtualDom} = instance
+  const start = vertical
+    ? touchState.snapShotHeight || 0
+    : touchState.snapShotWidth || 0
+  const position = rubberBand(
+    start + main * touchState.multiplier,
+    virtualDom.endOfSlidePosition
+  )
+  if (vertical) virtualDom.transformY = position
+  else virtualDom.transformX = position
+  touchState.distance = -main
 
-  // Calculate timing and speed
-  const touchEndTimeStamp = performance.now()
-  const timeElapsed = touchEndTimeStamp - (touchState.TouchStartTimeStamp || 0)
-  const speed = _swipe(touchState.distance || 0, timeElapsed)
+  const now = performance.now()
+  touchState.samples.push([now, position])
+  if (touchState.samples.length > 12) touchState.samples.shift()
 
-  // Determine what action to take based on speed and time
-  if (speed > 1.2) {
-    cyre.call(EVENTS.NEXT_SLIDE, virtualDom)
-  } else if (speed < -1.2) {
-    cyre.call(EVENTS.PREV_SLIDE, virtualDom)
-  } else if (_isClicked(timeElapsed)) {
-    _focus(e, activeId)
-  } else {
-    cyre.call(EVENTS.SNAP, virtualDom)
+  scheduleFrame(id)
+}
+
+/** end a press without landing anywhere */
+const _release = (id: string): void => {
+  const instance = holoStore.getInstance(id)
+  if (!instance) return
+  const {touchState, Dom} = instance
+  try {
+    if (Dom.container.hasPointerCapture?.(touchState.pointerId)) {
+      Dom.container.releasePointerCapture(touchState.pointerId)
+    }
+  } catch {
+    // nothing captured
   }
+  Dom.carousel.classList.remove(CSS_CLASSES.DRAGGING)
+  touchState.pressed = false
+  touchState.dragging = false
+  holoStore.updateSystem({pressedId: null})
+  setHold(id, 'pointer', false)
+}
+
+/**
+ * Handle pointer up / cancel
+ */
+export const _touchEnd = (e: PointerEvent): void => {
+  const id = holoStore.getSystem().pressedId
+  if (!id) return
+  const instance = holoStore.getInstance(id)
+  if (!instance) return
+  const {touchState, virtualDom, branch} = instance
+  if (e.pointerId !== touchState.pointerId) return
+
+  const dragged = touchState.dragging
+  cancelFrame(id)
+  _release(id)
+  if (!dragged) return
+
+  // the click that follows a drag is not a click
+  touchState.suppressClick = true
+
+  const vertical = !!virtualDom.io.orientation
+  const size = (vertical ? virtualDom.item.height : virtualDom.item.width) || 0
+  const position = vertical ? virtualDom.transformY : virtualDom.transformX
+  const velocity =
+    e.type === 'pointercancel'
+      ? 0
+      : releaseVelocity(touchState.samples, performance.now())
+
+  if (virtualDom.io.snap) {
+    const index = releaseIndex(
+      virtualDom.index,
+      position,
+      velocity,
+      size,
+      virtualDom.maxIndex
+    )
+    // goTo does not move when the index is unchanged, so place it here:
+    // a short drag still has to spring back
+    if (index === virtualDom.index) goTo(id, index)
+    else branch.call(EVENTS.GO_TO, {index})
+    return
+  }
+
+  // free mode: glide by the release speed and stop where it lands
+  const landed = Math.min(
+    0,
+    Math.max(position + velocity * GESTURE.MOMENTUM, virtualDom.endOfSlidePosition)
+  )
+  const before = virtualDom.index
+  if (vertical) virtualDom.transformY = landed
+  else virtualDom.transformX = landed
+  virtualDom.index = Math.min(nearestIndex(landed, size), virtualDom.maxIndex)
+  virtualDom.endOfSlide =
+    landed >= 0 ? 1 : landed <= virtualDom.endOfSlidePosition ? -1 : 0
+  holoStore.updateStyle(id, true)
+  holoStore.applyDomTransform(id)
+  renderState(id)
+  if (virtualDom.index !== before) branch.call(EVENTS.CHANGE, changeOf(virtualDom))
 }
 
 /**
  * Handle click/tap on carousel item
  */
-export const _focus = (e: MouseEvent | TouchEvent, id: string): void => {
+export const _focus = (e: MouseEvent | TouchEvent, id: string): boolean => {
   const target = e.target as HTMLElement
-  const holoItem = target.closest('li.holo')
+  const holoItem = target.closest(`.${CSS_CLASSES.ITEM}`) as HTMLElement | null
 
-  if (!holoItem) return cyre.call(EVENTS.ERROR, '_focus holo item not found')
+  if (!holoItem) return false
 
   const instance = holoStore.getInstance(id)
-  if (!instance)
-    return cyre.call(EVENTS.ERROR, '_focus holo instance not found')
-
-  // Remove active class from previous target
-  if (instance.touchState.targetHoloComponent) {
-    instance.touchState.targetHoloComponent.classList.remove('active')
+  if (!instance) {
+    log.error('_focus holo instance not found')
+    return false
   }
 
-  // Store and highlight new target
-  holoStore.updateTouchState(id, {targetHoloComponent: holoItem})
-
-  // Activate selected slide
-  cyre.call(EVENTS.ACTIVATE, [holoItem, instance.virtualDom])
-
+  instance.branch.call(EVENTS.ACTIVATE, holoItem)
   return true
 }
 
 /**
- * Setup global touch event listeners
+ * Setup global pointer listeners (one set for every carousel on the page)
  */
 export const setupGlobalTouchListeners = (): (() => void) => {
-  // Mouse move handler
-  const handleMouseMove = (e: MouseEvent): void => {
-    const instances = holoStore.getAllInstances()
+  const options: AddEventListenerOptions = {passive: false}
+  document.addEventListener('pointermove', _touchMove, options)
+  document.addEventListener('pointerup', _touchEnd)
+  document.addEventListener('pointercancel', _touchEnd)
 
-    for (const id in instances) {
-      if (instances[id].touchState.pressed) {
-        holoStore.updateTouchState(id, {
-          currentX: e.clientX,
-          currentY: e.clientY
-        })
-      }
-    }
-  }
-
-  // Touch move handler
-  const handleTouchMove = (e: TouchEvent): void => {
-    const instances = holoStore.getAllInstances()
-
-    for (const id in instances) {
-      if (instances[id].touchState.pressed) {
-        holoStore.updateTouchState(id, {
-          currentX: e.touches[0].clientX,
-          currentY: e.touches[0].clientY
-        })
-      }
-    }
-  }
-
-  // Mouse up handler
-  const handleMouseUp = (e: MouseEvent): void => {
-    e.preventDefault()
-
-    const instances = holoStore.getAllInstances()
-    let hasPressedInstance = false
-
-    for (const id in instances) {
-      if (instances[id].touchState.pressed) {
-        hasPressedInstance = true
-        break
-      }
-    }
-
-    if (hasPressedInstance) {
-      _touchEnd(e)
-    }
-  }
-
-  // Touch end handler
-  const handleTouchEnd = (e: TouchEvent): void => {
-    const instances = holoStore.getAllInstances()
-    let hasPressedInstance = false
-
-    for (const id in instances) {
-      if (instances[id].touchState.pressed) {
-        hasPressedInstance = true
-        break
-      }
-    }
-
-    if (hasPressedInstance) {
-      _touchEnd(e)
-    }
-  }
-
-  // Add event listeners
-  document.addEventListener('mousemove', handleMouseMove)
-  document.addEventListener('mouseup', handleMouseUp)
-  document.addEventListener('touchmove', handleTouchMove)
-  document.addEventListener('touchend', handleTouchEnd)
-
-  // Return cleanup function
   return () => {
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-    document.removeEventListener('touchmove', handleTouchMove)
-    document.removeEventListener('touchend', handleTouchEnd)
+    document.removeEventListener('pointermove', _touchMove, options)
+    document.removeEventListener('pointerup', _touchEnd)
+    document.removeEventListener('pointercancel', _touchEnd)
 
-    // Cancel any ongoing animations
-    Object.keys(animationFrames).forEach(id => {
-      cancelAnimationFrame(animationFrames[id])
-    })
+    const instances = holoStore.getAllInstances()
+    for (const id in instances) cancelFrame(id)
   }
 }
 
 // Export everything as an object for default export
 export default {
   _touchStart,
+  _touchMove,
   _touchEnd,
-  _dragScrollHorizontal,
-  _dragScrollVertical,
   _focus,
   setupGlobalTouchListeners
 }

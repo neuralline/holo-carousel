@@ -1,30 +1,16 @@
 //src/components/holo-touch-manager.ts
+
 import Touch from './holo-touch'
 
-const TouchManager = () => {
-  document.addEventListener('mousemove', e => {
-    if (Touch.pressed) {
-      Touch.currentX = e.clientX
-      Touch.currentY = e.clientY
-    }
-  })
+/**
+ * @deprecated Superseded by Touch.setupGlobalTouchListeners() (see
+ * holo-touch.ts), which app.ts already wires up on init. This wrapper is
+ * kept only for anyone importing TouchManager directly from older code -
+ * it used to reference Touch.pressed/currentX/currentY, properties that
+ * don't exist on the current Touch API (touch state now lives in
+ * core/state.ts's holoStore, per-instance), so calling it would have
+ * thrown immediately. It now just delegates to the real implementation.
+ */
+const TouchManager = (): (() => void) => Touch.setupGlobalTouchListeners()
 
-  document.addEventListener('mouseup', e => {
-    e.preventDefault()
-    Touch.pressed ? Touch._touchEnd(e) : false
-  })
-
-  document.addEventListener('touchmove', e => {
-    if (Touch.pressed) {
-      Touch.currentX = e.touches[0].clientX
-      Touch.currentY = e.touches[0].clientY
-    }
-  })
-
-  document.addEventListener('touchend', e => {
-    Touch.pressed ? Touch._touchEnd(e) : false
-  })
-
-  return true
-}
 export {TouchManager}

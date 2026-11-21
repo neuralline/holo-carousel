@@ -344,3 +344,187 @@ ul {
         height: 240px;
     }
 } */
+
+/* --- Holo 3: gestures, focus, controls -------------------------------- */
+
+/* the page keeps scrolling across the carousel; Holo takes the other axis */
+.holo-carousel > .holo-container {
+  touch-action: pan-y pinch-zoom;
+  cursor: grab;
+  will-change: transform;
+}
+.holo-carousel.holo-vertical > .holo-container {
+  touch-action: pan-x pinch-zoom;
+}
+.holo-carousel.holo-dragging > .holo-container {
+  cursor: grabbing;
+}
+.holo-carousel.holo-dragging .holo {
+  pointer-events: none;
+}
+.holo-container img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.holo-carousel:focus-visible {
+  outline: 2px solid #3ad7ff;
+  outline-offset: 4px;
+}
+
+.holo-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 16px;
+}
+.holo-controls[hidden] {
+  display: none;
+}
+.holo-controls button {
+  pointer-events: auto;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(2, 45, 95, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  transition: opacity 200ms ease, background 200ms ease, transform 200ms ease;
+}
+.holo-controls button:hover {
+  background: rgba(2, 45, 95, 0.95);
+}
+.holo-controls button:focus-visible {
+  outline: 2px solid #3ad7ff;
+  outline-offset: 2px;
+}
+.holo-prev,
+.holo-next {
+  position: absolute;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: 50%;
+  font-size: 26px;
+  line-height: 40px;
+  text-align: center;
+  opacity: 0;
+}
+.holo-prev {
+  left: 10px;
+}
+.holo-next {
+  right: 10px;
+}
+.holo-carousel:hover .holo-prev,
+.holo-carousel:hover .holo-next,
+.holo-carousel:focus-within .holo-prev,
+.holo-carousel:focus-within .holo-next {
+  opacity: 1;
+}
+.holo-controls button:disabled {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+.holo-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  overflow: visible;
+}
+.holo-dots .holo-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.45);
+  border: none;
+  transition: width 250ms ease, background 250ms ease;
+}
+.holo-dots .holo-dot.active {
+  width: 22px;
+  background: #fff;
+}
+.holo-play {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.holo-play::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 10px;
+  border-left: 3px solid #fff;
+  border-right: 3px solid #fff;
+}
+.holo-play[data-state='paused']::before {
+  width: 0;
+  height: 0;
+  border: none;
+  border-left: 9px solid #fff;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  margin-left: 10px;
+}
+/* vertical carousels: buttons top and bottom, dots down the side */
+.holo-vertical .holo-prev,
+.holo-vertical .holo-next {
+  left: 50%;
+  margin: 0 0 0 -22px;
+}
+.holo-vertical .holo-prev {
+  top: 10px;
+}
+.holo-vertical .holo-next {
+  top: auto;
+  bottom: 10px;
+}
+.holo-vertical .holo-dots {
+  left: auto;
+  right: 12px;
+  top: 0;
+  bottom: 0;
+  flex-direction: column;
+  align-items: center;
+}
+.holo-vertical .holo-dots .holo-dot.active {
+  width: 8px;
+  height: 22px;
+}
+.holo-dots[data-mode='count'] {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #fff;
+  background: rgba(2, 45, 95, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+.holo-vertical .holo-dots[data-mode='count'] {
+  left: auto;
+  top: auto;
+  bottom: 12px;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holo-carousel .transition,
+  .holo-carousel.transition,
+  .holo-controls button,
+  .holo-dots .holo-dot {
+    transition: none !important;
+  }
+}

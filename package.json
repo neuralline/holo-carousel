@@ -1,17 +1,23 @@
 {
   "name": "holo-carousel",
-  "version": "0.1.3",
+  "version": "3.0.0",
   "description": "Reactive carousel",
-  "main": "dist/holo-carousel.cjs.js",
-  "module": "dist/holo-carousel.esm.js",
-  "browser": "dist/holo-carousel.js",
-  "public": "public/js/holo-carousel.js",
+  "main": "dist/cjs/index.cjs",
+  "module": "dist/es/index.js",
+  "browser": "dist/umd/holo.js",
+  "public": "public/js/holo.js",
   "scripts": {
-    "build": "vite build && node scripts/copy-to-public.js",
-    "dev": "vite",
-    "start": "vite public",
+    "dev": "node scripts/dev.js",
+    "watch": "vite build --mode umd --watch",
+    "serve": "vite --config vite.demo.config.ts",
+    "start": "pnpm build && pnpm serve",
+    "build": "vite build && vite build --mode umd",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint --ext .ts,.tsx src",
-    "prepublishOnly": "npm run test && npm run build"
+    "prepublishOnly": "npm run test && npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit --emitDeclarationOnly false"
   },
   "author": "Darik.",
   "license": "MIT",
@@ -21,20 +27,22 @@
     "url": "https://github.com/neuralline/holo-carousel"
   },
   "devDependencies": {
-    "@types/node": "^22.15.18",
-    "@typescript-eslint/eslint-plugin": "^8.32.1",
-    "@typescript-eslint/parser": "^8.32.1",
-    "@vitest/coverage-v8": "3.1.3",
-    "eslint": "^9.26.0",
-    "rimraf": "^6.0.1",
-    "terser": "^5.39.2",
-    "ts-jest": "^29.3.3",
+    "@types/node": "^26.6.6",
+    "@typescript-eslint/eslint-plugin": "^8.73.0",
+    "@typescript-eslint/parser": "^8.73.0",
+    "@vitest/coverage-v8": "5.1.1",
+    "cyre": "link:../cyre",
+    "eslint": "^10.15.0",
+    "jsdom": "^31.0.1",
+    "rimraf": "^6.1.4",
+    "terser": "^5.51.2",
+    "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
-    "tslib": "^2.8.1",
-    "tsx": "^4.19.4",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.5",
-    "vitest": "^3.1.3"
+    "tslib": "^2.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   },
   "keywords": [
     "HOLO",
@@ -47,9 +55,16 @@
     "swipe",
     "touch"
   ],
-  "dependencies": {
-    "cyre": "^3.1.6"
-  },
   "type": "module",
-  "packageManager": "pnpm@10.10.0"
+  "exports": {
+    ".": {
+      "import": "./dist/es/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "browser": "./dist/umd/holo.js"
+    }
+  },
+  "peerDependencies": {
+    "cyre": "^5.0.0"
+  },
+  "types": "dist/types/index.d.ts"
 }

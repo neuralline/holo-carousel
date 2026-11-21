@@ -1,14 +1,24 @@
 //src/core/state.ts
+
 import {
   HoloState,
   CarouselInstance,
   VirtualDomState,
   DomState,
   TouchState,
-  HoloIOOptions
+  HoloIOOptions,
+  HoloBranch,
+  HoloSystemState,
+  HoldReason
 } from '../types/interface'
+import {ANIMATION, DEFAULT_IO_OPTIONS} from '../config/holo-config'
 
 // Create default states
+export const createDefaultIOOptions = (id: string): HoloIOOptions => ({
+  ...DEFAULT_IO_OPTIONS,
+  id
+})
+
 export const createDefaultVirtualDom = (id: string): VirtualDomState => ({
   id,
   carousel: {},
@@ -16,36 +26,22 @@ export const createDefaultVirtualDom = (id: string): VirtualDomState => ({
   io: createDefaultIOOptions(id),
   title: null,
   description: null,
-  duration: 600,
-  transitionTiming: 'cubic-bezier(0.215, 0.61, 0.355, 1)',
+  duration: ANIMATION.DURATION,
+  transitionTiming: ANIMATION.TIMING,
   transformX: 0,
   transformY: 0,
   transformZ: 0,
   numberOfSlots: 0,
-  endOfSlide: 0,
+  endOfSlide: 1,
   endOfSlidePosition: 0,
+  index: 0,
+  maxIndex: 0,
+  step: 1,
+  page: 0,
+  pages: 1,
   item: {
     max: 8
   }
-})
-
-export const createDefaultIOOptions = (id: string): HoloIOOptions => ({
-  id,
-  enabled: 1,
-  wheel: 0,
-  controller: 0,
-  drag: 1,
-  swipe: 1,
-  snap: 1,
-  focus: 1,
-  animate: 0,
-  animateDirection: 1,
-  duration: 0,
-  loop: 200,
-  orientation: 0,
-  active: true,
-  onClick: true,
-  onDoubleClick: true
 })
 
 export const createDefaultDomState = (): DomState => ({
@@ -55,100 +51,143 @@ export const createDefaultDomState = (): DomState => ({
 
 export const createDefaultTouchState = (): TouchState => ({
   pressed: false,
+  dragging: false,
+  cancelled: false,
+  pointerId: -1,
   positionX: 0,
   positionY: 0,
   currentX: 0,
   currentY: 0,
-  multiplier: 1.482
+  multiplier: 1,
+  samples: [],
+  suppressClick: false
 })
 
-// Create a closure-based state store
+const createDefaultSystemState = (): HoloSystemState => ({
+  initialized: false,
+  root: null,
+  pressedId: null,
+  autoInitialized: {},
+  sequence: 0,
+  cleanup: () => {}
+})
+
+// The one place carousel state lives. Records are updated in place:
+// a drag writes the position up to 120 times a second, and copying the
+// whole instance on every frame was the slowest part of the old store.
+// Readers get the live record - treat it as read-only and write through
+// the update* functions below.
 const createHoloStore = () => {
-  let state: HoloState = {instances: {}}
+  const state: HoloState = {
+    system: createDefaultSystemState(),
+    instances: {}
+  }
+
+  const instanceOf = (id: string): CarouselInstance | undefined =>
+    state.instances[id]
 
   return {
-    // Get a copy of instance state
-    getInstance: (id: string): CarouselInstance | undefined =>
-      state.instances[id] ? {...state.instances[id]} : undefined,
+    // --- page-wide ----------------------------------------------------
+    getSystem: (): HoloSystemState => state.system,
+
+    updateSystem: (updates: Partial<HoloSystemState>): HoloSystemState =>
+      Object.assign(state.system, updates),
+
+    /** next id for a carousel without an id attribute */
+    nextId: (): string => `holo-${++state.system.sequence}`,
+
+    markAutoInitialized: (id: string): void => {
+      state.system.autoInitialized[id] = true
+    },
+
+    isAutoInitialized: (id: string): boolean =>
+      !!state.system.autoInitialized[id],
+
+    resetSystem: (): void => {
+      state.system = createDefaultSystemState()
+    },
+
+    // --- instances ----------------------------------------------------
+    getInstance: instanceOf,
 
     // Get all carousel instances
-    getAllInstances: (): Record<string, CarouselInstance> => ({
-      ...state.instances
-    }),
+    getAllInstances: (): Record<string, CarouselInstance> => state.instances,
 
     // Get only the virtual DOM state
     getVirtualDom: (id: string): VirtualDomState | undefined =>
-      state.instances[id] ? {...state.instances[id].virtualDom} : undefined,
+      instanceOf(id)?.virtualDom,
 
     // Get only the DOM state
-    getDom: (id: string): DomState | undefined =>
-      state.instances[id] ? {...state.instances[id].Dom} : undefined,
+    getDom: (id: string): DomState | undefined => instanceOf(id)?.Dom,
+
+    // Get this carousel's own Cyre branch (holo/<id>)
+    getBranch: (id: string): HoloBranch | undefined => instanceOf(id)?.branch,
 
     // Get dimensions of a carousel
     getDimensions: (id: string) => {
-      const instance = state.instances[id]
+      const instance = instanceOf(id)
       if (!instance) return undefined
+      const {virtualDom} = instance
 
       return {
         car: {
-          w: instance.Dom.width || 0,
-          h: instance.Dom.height || 0
+          w: virtualDom.carousel.width || 0,
+          h: virtualDom.carousel.height || 0
         },
         con: {
-          w: instance.virtualDom.container.width || 0,
-          h: instance.virtualDom.container.height || 0,
-          x: instance.virtualDom.transformX,
-          y: instance.virtualDom.transformY,
-          z: instance.virtualDom.transformZ
+          w: virtualDom.container.width || 0,
+          h: virtualDom.container.height || 0,
+          x: virtualDom.transformX,
+          y: virtualDom.transformY,
+          z: virtualDom.transformZ
         }
       }
     },
-    // Apply dimensions to DOM elements
-    setDimension: (id: string): void => {
-      const instance = state.instances[id]
-      if (!instance) return
 
+    // Apply the measured viewport size to the carousel element
+    setDimension: (id: string): void => {
+      const instance = instanceOf(id)
+      if (!instance) return
       const {virtualDom, Dom} = instance
 
-      // Apply width/height based on orientation (matching original logic)
       if (!virtualDom.io.orientation) {
         Dom.carousel.style.width = `${virtualDom.carousel.width}px`
+        Dom.carousel.style.height = ''
       } else {
+        // a vertical container stacks full-width items
         Dom.carousel.style.height = `${virtualDom.carousel.height}px`
+        Dom.carousel.style.width = ''
+        Dom.container.style.width = '100%'
       }
     },
+
     // Register a new carousel instance
     registerInstance: (
       id: string,
       domElements: {carousel: HTMLElement; container: HTMLElement},
-      options: Partial<HoloIOOptions> = {}
+      options: Partial<HoloIOOptions> = {},
+      branch: HoloBranch
     ): CarouselInstance => {
       const virtualDom = createDefaultVirtualDom(id)
-      // Apply custom options
-      virtualDom.io = {...virtualDom.io, ...options}
-
-      const Dom: DomState = {
-        carousel: domElements.carousel,
-        container: domElements.container
-      }
+      virtualDom.io = {...virtualDom.io, ...options, id}
 
       const instance: CarouselInstance = {
         id,
         virtualDom,
-        Dom,
+        Dom: {
+          carousel: domElements.carousel,
+          container: domElements.container
+        },
         touchState: createDefaultTouchState(),
-        updateStyle: false
+        updateStyle: false,
+        branch,
+        hold: {},
+        cleanup: () => {},
+        frame: 0
       }
 
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: instance
-        }
-      }
-
-      return {...instance}
+      state.instances[id] = instance
+      return instance
     },
 
     // Update a carousel instance (partial update)
@@ -156,71 +195,33 @@ const createHoloStore = () => {
       id: string,
       updates: Partial<CarouselInstance>
     ): CarouselInstance | undefined => {
-      if (!state.instances[id]) return undefined
-
-      const updated = {
-        ...state.instances[id],
-        ...updates,
-        // Merge nested objects if they exist in updates
-        virtualDom: updates.virtualDom
-          ? {...state.instances[id].virtualDom, ...updates.virtualDom}
-          : state.instances[id].virtualDom,
-        Dom: updates.Dom
-          ? {...state.instances[id].Dom, ...updates.Dom}
-          : state.instances[id].Dom,
-        touchState: updates.touchState
-          ? {...state.instances[id].touchState, ...updates.touchState}
-          : state.instances[id].touchState
-      }
-
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: updated
-        }
-      }
-
-      return {...updated}
+      const instance = instanceOf(id)
+      if (!instance) return undefined
+      const {virtualDom, Dom, touchState, ...rest} = updates
+      Object.assign(instance, rest)
+      if (virtualDom) Object.assign(instance.virtualDom, virtualDom)
+      if (Dom) Object.assign(instance.Dom, Dom)
+      if (touchState) Object.assign(instance.touchState, touchState)
+      return instance
     },
 
-    // Update only the virtual DOM state
+    // Update only the virtual DOM state (nested objects are merged)
     updateVirtualDom: (
       id: string,
       updates: Partial<VirtualDomState>
     ): VirtualDomState | undefined => {
-      if (!state.instances[id]) return undefined
+      const instance = instanceOf(id)
+      if (!instance) return undefined
+      const current = instance.virtualDom
+      const {carousel, container, io, item, ...rest} = updates
 
-      const updatedVirtualDom = {
-        ...state.instances[id].virtualDom,
-        ...updates,
-        // Handle nested objects
-        carousel: updates.carousel
-          ? {...state.instances[id].virtualDom.carousel, ...updates.carousel}
-          : state.instances[id].virtualDom.carousel,
-        container: updates.container
-          ? {...state.instances[id].virtualDom.container, ...updates.container}
-          : state.instances[id].virtualDom.container,
-        io: updates.io
-          ? {...state.instances[id].virtualDom.io, ...updates.io}
-          : state.instances[id].virtualDom.io,
-        item: updates.item
-          ? {...state.instances[id].virtualDom.item, ...updates.item}
-          : state.instances[id].virtualDom.item
-      }
+      Object.assign(current, rest)
+      if (carousel) Object.assign(current.carousel, carousel)
+      if (container) Object.assign(current.container, container)
+      if (io) Object.assign(current.io, io)
+      if (item) Object.assign(current.item, item)
 
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: {
-            ...state.instances[id],
-            virtualDom: updatedVirtualDom
-          }
-        }
-      }
-
-      return {...updatedVirtualDom}
+      return current
     },
 
     // Update DOM state
@@ -228,25 +229,9 @@ const createHoloStore = () => {
       id: string,
       updates: Partial<DomState>
     ): DomState | undefined => {
-      if (!state.instances[id]) return undefined
-
-      const updatedDom = {
-        ...state.instances[id].Dom,
-        ...updates
-      }
-
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: {
-            ...state.instances[id],
-            Dom: updatedDom
-          }
-        }
-      }
-
-      return {...updatedDom}
+      const instance = instanceOf(id)
+      if (!instance) return undefined
+      return Object.assign(instance.Dom, updates)
     },
 
     // Update touch state
@@ -254,73 +239,81 @@ const createHoloStore = () => {
       id: string,
       updates: Partial<TouchState>
     ): TouchState | undefined => {
-      if (!state.instances[id]) return undefined
-
-      const updatedTouch = {
-        ...state.instances[id].touchState,
-        ...updates
-      }
-
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: {
-            ...state.instances[id],
-            touchState: updatedTouch
-          }
-        }
-      }
-
-      return {...updatedTouch}
+      const instance = instanceOf(id)
+      if (!instance) return undefined
+      return Object.assign(instance.touchState, updates)
     },
 
-    // Update DOM style property
-    updateStyle: (id: string, enableTransition: boolean): void => {
-      if (!state.instances[id]) return
-
-      state = {
-        ...state,
-        instances: {
-          ...state.instances,
-          [id]: {
-            ...state.instances[id],
-            updateStyle: enableTransition
-          }
-        }
+    resetTouchState: (id: string): void => {
+      const instance = instanceOf(id)
+      if (!instance) return
+      const keep = instance.touchState.targetHoloComponent
+      instance.touchState = {
+        ...createDefaultTouchState(),
+        targetHoloComponent: keep
       }
+    },
+
+    // Whether the next transform animates
+    updateStyle: (id: string, enableTransition: boolean): void => {
+      const instance = instanceOf(id)
+      if (instance) instance.updateStyle = enableTransition
+    },
+
+    setFrame: (id: string, frame: number): void => {
+      const instance = instanceOf(id)
+      if (instance) instance.frame = frame
+    },
+
+    // --- auto-play holds ---------------------------------------------
+    hold: (id: string, reason: HoldReason): void => {
+      const instance = instanceOf(id)
+      if (instance) instance.hold[reason] = true
+    },
+
+    release: (id: string, reason: HoldReason): void => {
+      const instance = instanceOf(id)
+      if (instance) delete instance.hold[reason]
+    },
+
+    isHeld: (id: string): boolean => {
+      const instance = instanceOf(id)
+      if (!instance) return true
+      for (const _ in instance.hold) return true
+      return false
     },
 
     // Apply style to DOM element based on state
-    applyDomTransform: (id: string): void => {
-      const instance = state.instances[id]
+    applyDomTransform: (id: string, offset = 0): void => {
+      const instance = instanceOf(id)
       if (!instance) return
+      const {Dom, virtualDom} = instance
+      const style = Dom.container.style
 
-      // Apply transition style if needed
-      if (instance.updateStyle) {
-        instance.Dom.container.style.transitionDuration =
-          instance.virtualDom.duration + 'ms'
-        instance.Dom.container.style.transitionTimingFunction =
-          instance.virtualDom.transitionTiming
+      if (instance.updateStyle && virtualDom.duration > 0) {
+        style.transitionDuration = virtualDom.duration + 'ms'
+        style.transitionTimingFunction = virtualDom.transitionTiming
       } else {
-        instance.Dom.container.style.transitionDuration = '0ms'
-        instance.Dom.container.style.transitionTimingFunction = 'linear'
+        style.transitionDuration = '0ms'
+        style.transitionTimingFunction = 'linear'
       }
 
-      // Apply transform
-      instance.Dom.container.style.transform = `translate3d(${instance.virtualDom.transformX}px, ${instance.virtualDom.transformY}px, ${instance.virtualDom.transformZ}px)`
+      const x = virtualDom.io.orientation ? 0 : virtualDom.transformX + offset
+      const y = virtualDom.io.orientation ? virtualDom.transformY + offset : 0
+      style.transform = `translate3d(${x}px, ${y}px, ${virtualDom.transformZ}px)`
     },
 
-    // Remove a carousel instance
+    // Remove a carousel instance (tears down its Cyre branch/channels first)
     removeInstance: (id: string): boolean => {
-      if (!state.instances[id]) return false
+      const instance = instanceOf(id)
+      if (!instance) return false
 
-      const {[id]: removed, ...rest} = state.instances
-
-      state = {
-        ...state,
-        instances: rest
-      }
+      if (instance.frame) cancelAnimationFrame(instance.frame)
+      instance.cleanup()
+      instance.branch.destroy()
+      if (state.system.pressedId === id) state.system.pressedId = null
+      delete state.system.autoInitialized[id]
+      delete state.instances[id]
 
       return true
     },

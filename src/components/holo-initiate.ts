@@ -1,39 +1,33 @@
 //src/components/holo-initiate.ts
 
-import cyre from 'cyre'
+import {log} from 'cyre'
 import holoCreateElement from './holo-create-element'
-import {EVENTS} from '../config/holo-config'
-
-// Track initialized carousels
-const initializedCarousels = new Set<string>()
+import {holoStore} from '../core/state'
 
 /**
- * Initialize all carousels with a specific class name
+ * Initialize all carousels with a specific class name (once each)
  */
-const holoInitiate = (carouselName: string): void => {
-  console.log('@holo: auto activated:', carouselName)
-
+const holoInitiate = (carouselName: string): string[] => {
   const carousels = document.getElementsByClassName(carouselName)
+  const built: string[] = []
 
-  if (carousels.length) {
-    for (let i = 0; i < carousels.length; i++) {
-      const slide = carousels[i] as HTMLElement
-
-      // Skip if already initialized
-      if (slide.id && initializedCarousels.has(slide.id)) {
-        continue
-      }
-
-      const id = holoCreateElement(slide, {})
-
-      // Track initialized carousels
-      if (id) {
-        initializedCarousels.add(id)
-      }
-    }
-  } else {
-    cyre.call(EVENTS.ERROR, '@Holo: carousel structure not found')
+  if (!carousels.length) {
+    log.debug('@HOLO: no carousels with class ' + carouselName)
+    return built
   }
+
+  for (const element of Array.from(carousels)) {
+    const slide = element as HTMLElement
+    if (slide.id && holoStore.isAutoInitialized(slide.id)) continue
+
+    const id = holoCreateElement(slide, {})
+    if (id) {
+      holoStore.markAutoInitialized(id)
+      built.push(id)
+    }
+  }
+
+  return built
 }
 
 export default holoInitiate

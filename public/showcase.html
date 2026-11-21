@@ -1,0 +1,868 @@
+<!-- public/showcase.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Holo × Cyre — Live Demo</title>
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --panel: #12141c;
+    --panel-2: #171a24;
+    --line: #262a38;
+    --text: #e8eaf0;
+    --muted: #8b90a3;
+    --accent: #7c5cff;
+    --accent-2: #00e0b8;
+    --warn: #ff9d4d;
+    --danger: #ff5c7a;
+  }
+  * { box-sizing: border-box; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  body { min-height: 100vh; }
+
+  header.hero {
+    padding: 48px 32px 28px;
+    text-align: center;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(124,92,255,0.18), transparent 55%),
+      radial-gradient(circle at 80% 0%, rgba(0,224,184,0.14), transparent 55%);
+    border-bottom: 1px solid var(--line);
+  }
+  header.hero h1 {
+    margin: 0 0 8px;
+    font-size: 40px;
+    letter-spacing: 1px;
+    font-weight: 800;
+  }
+  header.hero h1 .x { color: var(--muted); font-weight: 400; margin: 0 10px; }
+  header.hero h1 .holo { color: var(--accent); }
+  header.hero h1 .cyre { color: var(--accent-2); }
+  header.hero p.tagline {
+    margin: 0 auto;
+    max-width: 640px;
+    color: var(--muted);
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+  header.hero code {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--accent-2);
+    font-size: 13px;
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 24px;
+    padding: 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  .stage { display: flex; flex-direction: column; gap: 28px; }
+
+  section.demo-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    transition: border-color .2s;
+  }
+  section.demo-card:hover { border-color: #333952; }
+  section.demo-card h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section.demo-card h2 .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 8px var(--accent-2);
+  }
+  section.demo-card p.desc {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  section.demo-card p.desc code {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 0 5px;
+    border-radius: 4px;
+    color: var(--accent-2);
+  }
+
+  .carousel-frame {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid var(--line);
+  }
+  /* These three rules are load-bearing and normally come from the base
+     public/css/style.css - this demo doesn't link that stylesheet, so
+     without them .holo-container is a plain block <ul> and each .holo is a
+     plain block <li>: they stack vertically instead of sitting in a row,
+     which means the horizontal transform never reveals the next slide - it
+     just wiggles whichever one item is visible. */
+  .holo-carousel { display: block; width: 100%; height: 100%; overflow: hidden; white-space: nowrap; position: relative; }
+  .holo-carousel > .holo-container { display: inline-block; white-space: nowrap; position: relative; }
+  .holo-container > .holo { display: inline-block; position: relative; }
+  .holo-carousel .holo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  .hero-viewport { height: 340px; }
+  .wall-viewport { height: 450px; }
+  .lab-viewport { height: 260px; }
+
+  /* Holo's base CSS only sets a default 43x60 item box (see .holo-container > .holo
+     in public/css/style.css) and never toggles layout for vertical orientation —
+     that's left to the page. These sizes are the "item.width/height" the library
+     measures off the first .holo child, so they drive numberOfSlots/carousel sizing. */
+  .hero-viewport .holo-container .holo { width: 520px; height: 340px; margin: 0 6px 0 0; border-radius: 0; }
+  .lab-viewport .holo-container .holo { width: 380px; height: 260px; margin: 0 6px 0 0; border-radius: 0; }
+  .spawned-frame .holo-container .holo { width: 220px; height: 130px; margin: 0 6px 0 0; border-radius: 0; }
+
+  /* Vertical orientation: JS only flips the translate axis (translateY instead of
+     translateX) — the items still need to be told to stack instead of running
+     inline, so the slide direction actually matches what you see. */
+  .wall-viewport .holo-container { white-space: normal !important; }
+  .wall-viewport .holo-container .holo { display: block; width: 100%; height: 150px; margin: 0 0 6px; border-radius: 0; }
+
+  /* Click-to-focus (holo-touch.ts _focus()) adds an "active" class to the
+     clicked li.holo, but the base stylesheet's rule for it (`.holo .active`)
+     targets a descendant, not the li itself, so it never matches — this
+     gives the click visible feedback. */
+  .holo-container .holo.active { outline: 3px solid var(--accent-2); outline-offset: -3px; }
+
+  .nav-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  button.nav-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 14px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: border-color .15s, transform .1s;
+  }
+  button.nav-btn:hover { border-color: var(--accent); }
+  button.nav-btn:active { transform: scale(0.95); }
+  button.nav-btn.primary { border-color: var(--accent); color: var(--accent); }
+  button.nav-btn.accent2 { border-color: var(--accent-2); color: var(--accent-2); }
+
+  /* --- Sidebar: Cyre Signal Console --- */
+  aside.console {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    position: sticky;
+    top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: calc(100vh - 40px);
+  }
+  aside.console h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  aside.console h2 .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent-2);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,224,184,0.5); }
+    50% { opacity: .5; box-shadow: 0 0 0 5px rgba(0,224,184,0); }
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .stat-box {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-box .label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .stat-box .value { font-size: 20px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat-box .value.small { font-size: 13px; }
+
+  .console-note { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .console-note code { background: var(--panel-2); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; color: var(--accent-2); }
+
+  .vitals-block { display: flex; flex-direction: column; gap: 8px; }
+  .vitals-label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .vitals-label code { text-transform: none; letter-spacing: 0; background: var(--panel-2); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; color: var(--accent-2); }
+  .stat-box.vital { border-color: #7c5cff44; }
+
+  /* --- Multiply section --- */
+  section.spawn-zone {
+    background: var(--panel);
+    border: 1px dashed var(--line);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  #spawnHost {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .spawned-unit {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px;
+    transition: border-color .15s, transform .15s;
+  }
+  .spawned-unit:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .spawned-unit .spawned-frame { height: 130px; border-radius: 7px; overflow: hidden; background: #000; }
+  .spawned-unit .spawned-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .spawned-unit button.kill {
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background .15s, color .15s;
+  }
+  .spawned-unit button.kill:hover { background: var(--danger); color: #0a0b0f; }
+
+  .stress-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+  .stress-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .stress-field input[type="number"] {
+    width: 110px; background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 6px; padding: 5px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums;
+  }
+  .stress-toggle { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); max-width: 340px; line-height: 1.4; }
+  .stress-progress { flex-basis: 100%; display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stress-bar { flex: 1; height: 6px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .stress-bar-fill { height: 100%; width: 0%; background: var(--accent-2); transition: width .1s linear; }
+  .spawned-unit.headless { display: none; }
+
+  /* --- Accordion --- */
+  .holo-accordion { display: flex; flex-direction: column; gap: 8px; }
+  .accordion-item { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #0d0f16; }
+  .accordion-header {
+    padding: 12px 14px;
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  .accordion-header::after {
+    content: '+';
+    color: var(--muted);
+    font-weight: 400;
+    transition: transform .2s;
+    flex-shrink: 0;
+    margin-left: 10px;
+  }
+  .accordion-header.active { color: var(--accent-2); }
+  .accordion-header.active::after { content: '−'; color: var(--accent-2); }
+  .accordion-panel { max-height: 0; opacity: 0; overflow: hidden; padding: 0 14px; }
+  .accordion-panel p { margin: 0 0 12px; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+  .accordion-panel code { background: var(--panel-2); border: 1px solid var(--line); padding: 0 4px; border-radius: 4px; color: var(--accent-2); }
+
+  footer {
+    text-align: center;
+    padding: 30px;
+    color: var(--muted);
+    font-size: 12px;
+    border-top: 1px solid var(--line);
+  }
+  footer code { color: var(--accent-2); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1><span class="holo">HOLO</span><span class="x">×</span><span class="cyre">CYRE</span></h1>
+  <p class="tagline">
+    Every carousel below is its own isolated <code>cyre.branch(id)</code> namespace —
+    same local channel names (<code>next-slide</code>, <code>animate</code>, <code>snap</code>…), zero collisions,
+    because each branch rewrites them to a globally unique path. Watch the console on the right:
+    it's listening live to real Cyre channels firing on the carousels to the left.
+  </p>
+</header>
+
+<main>
+  <div class="stage">
+
+    <section class="demo-card">
+      <h2><span class="dot"></span> Hero — auto-animating, horizontal</h2>
+      <p class="desc">Registered on branch <code>hero</code>. Auto-advances every 4.2s via a Cyre <code>interval</code>-scheduled <code>animate</code> channel.</p>
+      <div class="carousel-frame hero-viewport">
+        <carousel id="hero" class="holo-carousel">
+          <ul class="holo-container">
+            <li class="holo"><img src="img/25.jpg" alt="" /></li>
+            <li class="holo"><img src="img/26.jpg" alt="" /></li>
+            <li class="holo"><img src="img/27.jpg" alt="" /></li>
+            <li class="holo"><img src="img/28.jpg" alt="" /></li>
+            <li class="holo"><img src="img/29.jpg" alt="" /></li>
+            <li class="holo"><img src="img/30.jpg" alt="" /></li>
+            <li class="holo"><img src="img/31.jpg" alt="" /></li>
+            <li class="holo"><img src="img/32.jpg" alt="" /></li>
+            <li class="holo"><img src="img/33.jpg" alt="" /></li>
+            <li class="holo"><img src="img/34.jpg" alt="" /></li>
+          </ul>
+        </carousel>
+      </div>
+      <div class="nav-row">
+        <button class="nav-btn primary" data-nav="hero" data-dir="first">⏮ First</button>
+        <button class="nav-btn" data-nav="hero" data-dir="prev">‹ Prev</button>
+        <button class="nav-btn" data-nav="hero" data-dir="next">Next ›</button>
+        <button class="nav-btn primary" data-nav="hero" data-dir="last">Last ⏭</button>
+      </div>
+    </section>
+
+    <section class="demo-card">
+      <h2><span class="dot"></span> Wall — vertical orientation</h2>
+      <p class="desc">
+        Registered on branch <code>wall</code>, <code>orientation: 1</code>. This is the exact layout that exposed a
+        <code>carousel.height</code> sizing bug in <code>event-manager.ts</code> — vertical carousels were
+        collapsing to a single item's height instead of the full multi-item viewport. Fixed as part of this pass.
+      </p>
+      <div class="carousel-frame wall-viewport">
+        <carousel id="wall" class="holo-carousel">
+          <ul class="holo-container">
+            <li class="holo"><img src="img/v2.jpg" alt="" /></li>
+            <li class="holo"><img src="img/1.jpg" alt="" /></li>
+            <li class="holo"><img src="img/3.jpg" alt="" /></li>
+            <li class="holo"><img src="img/4.jpg" alt="" /></li>
+            <li class="holo"><img src="img/5.jpg" alt="" /></li>
+            <li class="holo"><img src="img/6.jpg" alt="" /></li>
+            <li class="holo"><img src="img/7.jpg" alt="" /></li>
+            <li class="holo"><img src="img/8.jpg" alt="" /></li>
+            <li class="holo"><img src="img/9.jpg" alt="" /></li>
+            <li class="holo"><img src="img/10.jpg" alt="" /></li>
+          </ul>
+        </carousel>
+      </div>
+      <div class="nav-row">
+        <button class="nav-btn accent2" data-nav="wall" data-dir="first">⏮ First</button>
+        <button class="nav-btn" data-nav="wall" data-dir="prev">‹ Prev</button>
+        <button class="nav-btn" data-nav="wall" data-dir="next">Next ›</button>
+        <button class="nav-btn accent2" data-nav="wall" data-dir="last">Last ⏭</button>
+      </div>
+    </section>
+
+    <section class="demo-card">
+      <h2><span class="dot"></span> Lab — manual only, mouse-wheel enabled</h2>
+      <p class="desc">Registered on branch <code>lab</code> with <code>wheel: 1</code>. No auto-animate channel scheduled — every slide change is a direct dispatch (button, or scroll with your cursor over the frame), so the console log line always traces back to something you just did. This is also the fixed <code>wheeler</code> channel — it used to call its handler function directly, bypassing Cyre entirely, so <code>Holo.on(id, 'wheeler', …)</code> could never see a scroll. It now dispatches through the branch like every other action.</p>
+      <div class="carousel-frame lab-viewport">
+        <carousel id="lab" class="holo-carousel">
+          <ul class="holo-container">
+            <li class="holo"><img src="img/11.jpg" alt="" /></li>
+            <li class="holo"><img src="img/12.jpg" alt="" /></li>
+            <li class="holo"><img src="img/13.jpg" alt="" /></li>
+            <li class="holo"><img src="img/14.jpg" alt="" /></li>
+            <li class="holo"><img src="img/15.jpg" alt="" /></li>
+            <li class="holo"><img src="img/16.jpg" alt="" /></li>
+            <li class="holo"><img src="img/17.jpg" alt="" /></li>
+            <li class="holo"><img src="img/18.jpg" alt="" /></li>
+            <li class="holo"><img src="img/19.jpg" alt="" /></li>
+          </ul>
+        </carousel>
+      </div>
+      <div class="nav-row">
+        <button class="nav-btn" data-nav="lab" data-dir="first">⏮ First</button>
+        <button class="nav-btn" data-nav="lab" data-dir="prev">‹ Prev</button>
+        <button class="nav-btn" data-nav="lab" data-dir="next">Next ›</button>
+        <button class="nav-btn" data-nav="lab" data-dir="last">Last ⏭</button>
+      </div>
+    </section>
+
+    <section class="demo-card">
+      <h2><span class="dot"></span> FAQ — Accordion, same branch structure</h2>
+      <p class="desc">
+        A second component family built the same way as Holo: <code>Accordion.BUILD(el, opts)</code> mints its own
+        <code>cyre.branch(id)</code>, with local channels <code>toggle</code>/<code>open</code>/<code>close</code>
+        living on that branch instead of the root. Set to single-open mode, so opening one panel closes the rest.
+      </p>
+      <div class="holo-accordion" id="faq">
+        <div class="accordion-item">
+          <div class="accordion-header">Why does every carousel need its own branch?</div>
+          <div class="accordion-panel"><p>Cyre channels are global by string id. Two carousels both registering <code>next-slide</code> on the root instance would silently overwrite each other's config — <code>cyre.branch(id)</code> rewrites the local name to something like <code>hero/next-slide</code>, so instances can reuse identical channel names without colliding.</p></div>
+        </div>
+        <div class="accordion-item">
+          <div class="accordion-header">Is this accordion actually using Cyre, or just toggling a class?</div>
+          <div class="accordion-panel"><p>Every click calls <code>branch.call('toggle', {index})</code> on this accordion's own branch — the same dispatch-through-Cyre pattern as Holo's next/prev. Watch the console: opening a panel logs a real <code>toggle</code> event with this accordion's id.</p></div>
+        </div>
+        <div class="accordion-item">
+          <div class="accordion-header">What decides open vs. closed?</div>
+          <div class="accordion-panel"><p>State lives in <code>accordionStore</code> (in <code>core/accordion-state.ts</code>), not in a closure inside the component — the same "no local maps, state comes from the state directory" rule Holo follows. The DOM is just a render of whatever that store currently holds.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="spawn-zone">
+      <h2 style="margin:0;font-size:15px;">Multiply — spawn more branches at runtime</h2>
+      <p class="desc" style="margin-top:6px;">
+        Each click calls <code>Holo.BUILD(el)</code> on a freshly created <code>&lt;carousel&gt;</code> element, which
+        mints a brand new <code>cyre.branch(id)</code>. This is the collision test: every spawned unit reuses
+        the identical local channel names as Hero/Wall/Lab, and none of them interfere with each other.
+      </p>
+      <button class="nav-btn primary" id="spawnBtn" style="margin-top:10px;">+ Spawn carousel</button>
+
+      <div class="stress-controls">
+        <label class="stress-field">Target
+          <input type="number" id="stressTarget" value="200000" min="1" step="1000" />
+        </label>
+        <label class="stress-toggle">
+          <input type="checkbox" id="stressRender" />
+          render every one visibly (leave off above ~2,000 — DOM/paint/console-logging hit their own ceiling
+          long before Cyre's channel throughput does; unrendered ones still run a real branch, real channels,
+          real auto-animate timers)
+        </label>
+        <button class="nav-btn accent2" id="stressStartBtn">⚡ Auto-spawn to target</button>
+        <button class="nav-btn" id="stressStopBtn" disabled>Stop</button>
+        <div class="stress-progress" id="stressProgress" hidden>
+          <span id="stressProgressText">0 / 0</span>
+          <div class="stress-bar"><div class="stress-bar-fill" id="stressBarFill"></div></div>
+        </div>
+      </div>
+
+      <div id="spawnHost"></div>
+    </section>
+
+  </div>
+
+  <aside class="console">
+    <h2><span class="pulse"></span> Cyre Signal Console</h2>
+    <p class="console-note">Stats below come from <code>Holo.on</code>/<code>Accordion.on</code> subscriptions. System Vitals is the real engine — <code>useMetrics</code>, Cyre's own hook, not anything Holo computes.</p>
+
+    <div class="stat-grid">
+      <div class="stat-box"><div class="label">Carousels</div><div class="value" id="statCarousels">0</div></div>
+      <div class="stat-box"><div class="label">Events fired</div><div class="value" id="statEvents">0</div></div>
+      <div class="stat-box"><div class="label">Events/sec</div><div class="value" id="statRate">0.0</div></div>
+      <div class="stat-box"><div class="label">Uptime</div><div class="value" id="statUptime">0s</div></div>
+    </div>
+
+    <div class="vitals-block">
+      <div class="vitals-label">System Vitals — <code>cyre.getMetrics()</code> via <code>useMetrics</code></div>
+      <div class="stat-grid">
+        <div class="stat-box vital"><div class="label">Stress</div><div class="value" id="vitalStress">–</div></div>
+        <div class="stat-box vital"><div class="label">Breathing</div><div class="value small" id="vitalBreathing">–</div></div>
+        <div class="stat-box vital"><div class="label">Calls/sec</div><div class="value" id="vitalCallRate">–</div></div>
+        <div class="stat-box vital"><div class="label">Channels</div><div class="value" id="vitalChannels">–</div></div>
+      </div>
+    </div>
+
+  </aside>
+</main>
+
+<footer>
+  Built on <code>Holo</code> (branch-per-instance carousel) + <code>Cyre</code> (channel-based reactive event manager).
+  Open the console — the app-level lines are real subscriptions via <code>Holo.on(id, eventName, handler)</code>;
+  the ⚙ lines and System Vitals come straight from Cyre's own <code>useLog</code>/<code>useMetrics</code> hooks.
+</footer>
+
+<!-- Holo UMD includes Cyre v5 (auto Cyre.init); window.Cyre exposes useMetrics / log -->
+<script src="js/holo.js"></script>
+<script>
+(function () {
+  var EVENT_COLORS = {
+    'next-slide':       '#00e0b8',
+    'prev-slide':       '#00e0b8',
+    'first-slide':      '#3fd3ff',
+    'last-slide':       '#3fd3ff',
+    'snap':             '#7c5cff',
+    'activate':         '#ffd75e',
+    'animate-forward':  '#ff9d4d',
+    'animate-backward': '#ff9d4d',
+    'wheeler':          '#ff5c7a'
+  };
+  var TRACKED = Object.keys(EVENT_COLORS);
+
+  var ACCORDION_EVENT_COLORS = {
+    'toggle': '#ffd75e',
+    'open':   '#00e0b8',
+    'close':  '#8b90a3'
+  };
+  var ACCORDION_TRACKED = Object.keys(ACCORDION_EVENT_COLORS);
+
+  var statCarousels = document.getElementById('statCarousels');
+  var statEvents = document.getElementById('statEvents');
+  var statRate = document.getElementById('statRate');
+  var statUptime = document.getElementById('statUptime');
+
+  var eventCount = 0;
+  var eventTimestamps = [];
+  var carouselCount = 0;
+  var startedAt = Date.now();
+
+  function logEvent(carouselId, eventName, detail) {
+    // The visible scrolling event log was removed - it did a DOM
+    // createElement/appendChild (plus a prune pass and a scroll) for every
+    // single tracked event, with no cap on event *rate*, only on lines kept.
+    // At stress-test scale that was real, unbounded main-thread work
+    // competing with Cyre itself. The counters below (stat-grid: Events
+    // fired / Events per sec) are cheap and stay.
+    eventCount++;
+    eventTimestamps.push(Date.now());
+    statEvents.textContent = eventCount;
+  }
+
+  function wireConsole(carouselId) {
+    if (!window.Holo || typeof Holo.on !== 'function') return;
+    TRACKED.forEach(function (eventName) {
+      Holo.on(carouselId, eventName, function () {
+        logEvent(carouselId, eventName);
+      });
+    });
+  }
+
+  function wireAccordionConsole(accordionId) {
+    if (!window.Accordion || typeof Accordion.on !== 'function') return;
+    ACCORDION_TRACKED.forEach(function (eventName) {
+      Accordion.on(accordionId, eventName, function () {
+        logEvent(accordionId, eventName);
+      });
+    });
+  }
+
+  // Real Cyre engine telemetry - window.Cyre is set by app.ts alongside
+  // window.Holo, exposing useMetrics/useLog/LogLevel/log straight from the
+  // 'cyre' package. Everything below is genuine engine state, not
+  // anything Holo/Accordion compute about themselves.
+  function wireCyreVitals() {
+    if (!window.Cyre || typeof Cyre.useMetrics !== 'function') return;
+
+    var vitals = Cyre.useMetrics(Cyre.cyre, {interval: 1000});
+    vitals.watch(function (m) {
+      if (!m || m.available === false || !m.system) return;
+
+      var stressPct = Math.round((m.system.stress.combined || 0) * 100);
+      document.getElementById('vitalStress').textContent = stressPct + '%';
+
+      var breathing = m.system.breathing || {};
+      document.getElementById('vitalBreathing').textContent =
+        Math.round(breathing.currentRate || 0) + 'ms · ' + (breathing.pattern || '–');
+
+      var callRate = (m.system.performance && m.system.performance.callsPerSecond) || 0;
+      document.getElementById('vitalCallRate').textContent = callRate.toFixed(1);
+
+      document.getElementById('vitalChannels').textContent =
+        (m.stores && m.stores.channels) || 0;
+    });
+  }
+
+  function wireNav() {
+    document.querySelectorAll('[data-nav]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-nav');
+        var dir = btn.getAttribute('data-dir');
+        if (window.Holo && typeof Holo[dir] === 'function') {
+          Holo[dir](id);
+        }
+      });
+    });
+  }
+
+  function tickStats() {
+    var cutoff = Date.now() - 3000;
+    eventTimestamps = eventTimestamps.filter(function (ts) { return ts > cutoff; });
+    var rate = eventTimestamps.length / 3;
+    statRate.textContent = rate.toFixed(1);
+
+    var uptimeS = Math.floor((Date.now() - startedAt) / 1000);
+    statUptime.textContent = uptimeS < 60
+      ? uptimeS + 's'
+      : Math.floor(uptimeS / 60) + 'm ' + (uptimeS % 60) + 's';
+
+    statCarousels.textContent = carouselCount;
+  }
+
+  var SPAWN_IMAGE_POOL = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,24,25,26,27,28,29,30,31,32,33,34];
+  var spawnCounter = 0;
+
+  function pickImages(n) {
+    var pool = SPAWN_IMAGE_POOL.slice();
+    var picked = [];
+    for (var i = 0; i < n && pool.length; i++) {
+      var idx = Math.floor(Math.random() * pool.length);
+      picked.push(pool.splice(idx, 1)[0]);
+    }
+    return picked;
+  }
+
+  function spawnCarousel(opts) {
+    opts = opts || {};
+    var headless = !!opts.headless;
+    var wireLog = opts.wireLog !== false;
+
+    spawnCounter++;
+    var id = 'spawn-' + spawnCounter + '-' + Date.now().toString(36);
+    var duration = (2500 + Math.floor(Math.random() * 3500));
+    // 5-9 images per spawned carousel for a normal manual click - stress-
+    // testing many slots per instance, not just many instances. Headless
+    // (auto-spawn stress-test) units use only 2: at real scale the cost
+    // that matters is instance/channel/timer count, not slide count, so
+    // there's no reason to multiply it.
+    var imageCount = headless ? 2 : (5 + Math.floor(Math.random() * 5));
+
+    var unit = document.createElement('div');
+    unit.className = headless ? 'spawned-unit headless' : 'spawned-unit';
+
+    var frame = document.createElement('div');
+    frame.className = 'spawned-frame';
+
+    var carouselEl = document.createElement('carousel');
+    carouselEl.id = id;
+    carouselEl.className = 'holo-carousel';
+
+    var list = document.createElement('ul');
+    list.className = 'holo-container';
+    pickImages(imageCount).forEach(function (n) {
+      var li = document.createElement('li');
+      li.className = 'holo';
+      var img = document.createElement('img');
+      img.src = 'img/' + n + '.jpg';
+      li.appendChild(img);
+      list.appendChild(li);
+    });
+    carouselEl.appendChild(list);
+
+    frame.appendChild(carouselEl);
+    unit.appendChild(frame);
+
+    // Headless units are never seen (display:none, see .spawned-unit.headless)
+    // and there can be tens of thousands of them - skip building controls
+    // nobody will ever click.
+    if (!headless) {
+      var controls = document.createElement('div');
+      controls.className = 'spawned-controls';
+      var label = document.createElement('span');
+      label.textContent = id + ' · ' + imageCount + ' imgs · ' + (duration / 1000).toFixed(1) + 's';
+      var kill = document.createElement('button');
+      kill.className = 'kill';
+      kill.textContent = 'destroy';
+      kill.addEventListener('click', function () {
+        if (window.Holo && typeof Holo.remove === 'function') {
+          Holo.remove(id);
+        }
+        unit.remove();
+        carouselCount = Math.max(0, carouselCount - 1);
+      });
+      controls.appendChild(label);
+      controls.appendChild(kill);
+      unit.appendChild(controls);
+    }
+
+    document.getElementById('spawnHost').appendChild(unit);
+
+    if (window.Holo && typeof Holo.BUILD === 'function') {
+      Holo.BUILD(carouselEl, {animate: 1, duration: duration});
+      carouselCount++;
+      // wireConsole subscribes every navigation/animate tick of this
+      // instance into the demo's own log feed - real DOM work per event.
+      // Fine for a handful of carousels, but at stress-test scale the
+      // console itself would become the bottleneck instead of Cyre, so
+      // batch spawns skip it (wireLog: false).
+      if (wireLog) wireConsole(id);
+      // Without this, the new branch's carousel.width/height (computed by
+      // the REFRESH_CAROUSEL handler in event-manager.ts) stays at its
+      // default until the next window resize — and next/prev move by
+      // `carousel.width || 0`, so it would silently do nothing until then.
+      // Batch spawns call Holo.refresh() once after the whole run instead
+      // of once per instance.
+      if (!headless) Holo.refresh();
+    }
+    return id;
+  }
+
+  // --- Stress test: auto-spawn toward a target count, batched across
+  // animation frames so the tab stays responsive enough to watch (and
+  // stop). This is deliberately two different experiments depending on
+  // "render visibly": checked, you're also benchmarking the browser's own
+  // DOM/layout/paint ceiling; unchecked, every spawned carousel is still a
+  // real branch with real channels and a real auto-animate timer, it's
+  // just never inserted into the render tree (display:none), which is the
+  // fairer way to see what Cyre itself can carry before ITS numbers (stress,
+  // breathing, calls/sec in System Vitals) start to move.
+  var stressRunning = false;
+  var stressCreated = 0;
+  var stressTarget = 0;
+  var stressRafId = null;
+
+  // Time-budgeted instead of a fixed count per frame: the per-spawn cost
+  // isn't constant - REFRESH_SCREEN's fan-out (initializeGlobalEvents in
+  // event-manager.ts) walks every existing instance on each debounced
+  // refresh, so it gets slower the more carousels already exist. A fixed
+  // batch size that felt fine at 500 instances can easily take 10x longer
+  // at 5,000, which is what stalls the tab - each animation-frame callback
+  // ends up blocking the main thread for far longer than one frame's worth
+  // of time, so input and rendering stop being serviced. Spawning until a
+  // small time slice is used up (instead of until N items are made) keeps
+  // each frame roughly the same length no matter how many instances exist.
+  var STRESS_FRAME_BUDGET_MS = 8;
+
+  function stressTick() {
+    if (!stressRunning) return;
+    var remaining = stressTarget - stressCreated;
+    if (remaining <= 0) {
+      stopStress('done');
+      return;
+    }
+    var renderVisibly = document.getElementById('stressRender').checked;
+    var start = performance.now();
+    var made = 0;
+    while (
+      made < remaining &&
+      (made === 0 || performance.now() - start < STRESS_FRAME_BUDGET_MS)
+    ) {
+      spawnCarousel({headless: !renderVisibly, wireLog: false});
+      made++;
+    }
+    stressCreated += made;
+
+    document.getElementById('stressProgressText').textContent =
+      stressCreated.toLocaleString() + ' / ' + stressTarget.toLocaleString() +
+      ' (' + made + '/frame)';
+    document.getElementById('stressBarFill').style.width =
+      Math.min(100, (stressCreated / stressTarget) * 100) + '%';
+
+    stressRafId = requestAnimationFrame(stressTick);
+  }
+
+  function startStress() {
+    if (stressRunning) return;
+    var target = parseInt(document.getElementById('stressTarget').value, 10);
+    if (!target || target <= 0) return;
+    stressRunning = true;
+    stressCreated = 0;
+    stressTarget = target;
+    document.getElementById('stressProgress').hidden = false;
+    document.getElementById('stressProgressText').textContent = '0 / ' + target.toLocaleString();
+    document.getElementById('stressBarFill').style.width = '0%';
+    document.getElementById('stressStartBtn').disabled = true;
+    document.getElementById('stressStopBtn').disabled = false;
+    stressRafId = requestAnimationFrame(stressTick);
+  }
+
+  function stopStress(reason) {
+    var wasRunning = stressRunning;
+    stressRunning = false;
+    if (stressRafId) cancelAnimationFrame(stressRafId);
+    stressRafId = null;
+    document.getElementById('stressStartBtn').disabled = false;
+    document.getElementById('stressStopBtn').disabled = true;
+    if (window.Holo && typeof Holo.refresh === 'function') Holo.refresh();
+    if (wasRunning && window.Cyre && Cyre.log) {
+      Cyre.log[reason === 'done' ? 'success' : 'warn'](
+        'Stress spawn ' + (reason === 'done' ? 'complete' : 'stopped') +
+        ' at ' + stressCreated.toLocaleString() + ' / ' + stressTarget.toLocaleString() + ' carousels'
+      );
+    }
+  }
+
+  function init() {
+    wireNav();
+
+    if (window.Holo && typeof Holo.INIT === 'function') {
+      // Holo.INIT() does two things: it registers the one page-wide
+      // REFRESH_SCREEN channel (initializeGlobalEvents) and wires up the
+      // window resize/load listeners that keep every carousel's measured
+      // width/height current. Both are required before next/prev or a
+      // click-to-focus mean anything, since they compute carousel.width —
+      // next/prev literally move by `carousel.width || 0`. It also does a
+      // class-name auto-scan (Holo.AUTO) as a convenience, which we don't
+      // want here since hero/wall/lab need per-carousel options (orientation,
+      // animate) that a blanket scan can't pass — see holo-initiate.ts,
+      // which always calls holoCreateElement with {}. Passing a class name
+      // that matches nothing skips that scan without losing the setup above.
+      Holo.INIT('__holo_autoscan_disabled__');
+    }
+
+    if (window.Holo && typeof Holo.BUILD === 'function') {
+      Holo.BUILD(document.getElementById('hero'), {animate: 1, duration: 4200});
+      Holo.BUILD(document.getElementById('wall'), {animate: 1, duration: 6000, orientation: 1});
+      Holo.BUILD(document.getElementById('lab'), {wheel: 1}); // manual + mouse-wheel, no auto-animate
+    }
+
+    ['hero', 'wall', 'lab'].forEach(function (id) {
+      wireConsole(id);
+      carouselCount++;
+    });
+
+    // Force an immediate size pass rather than waiting on window 'load'
+    // (images are fixed-size via CSS here, so measuring early is safe).
+    if (window.Holo && typeof Holo.refresh === 'function') {
+      Holo.refresh();
+    }
+
+    if (window.Accordion && typeof Accordion.BUILD === 'function') {
+      Accordion.BUILD(document.getElementById('faq'), {multiple: 0, startOpen: 0});
+      wireAccordionConsole('faq');
+    }
+
+    wireCyreVitals();
+
+    document.getElementById('spawnBtn').addEventListener('click', function () { spawnCarousel(); });
+    document.getElementById('stressStartBtn').addEventListener('click', startStress);
+    document.getElementById('stressStopBtn').addEventListener('click', function () { stopStress('stopped'); });
+
+    // Auto-spawn two extra branches so the collision-free claim is visible on load.
+    spawnCarousel();
+    spawnCarousel();
+
+    setInterval(tickStats, 200);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -6,6 +6,8 @@
 /.yarn
 .pnp.js
 /dist
+/v10
+/v11
 
 # testing
 /coverage
