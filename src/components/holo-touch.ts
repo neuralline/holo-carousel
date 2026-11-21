@@ -3,114 +3,267 @@
 import {log} from 'cyre'
 import {holoStore} from '../core/state'
 import {setHold} from '../core/event-manager'
-import {
-  releaseIndex,
-  releaseVelocity,
-  rubberBand,
-  goTo,
-  renderState,
-  changeOf,
-  nearestIndex
-} from './holo-essentials'
-import {CSS_CLASSES, EVENTS, GESTURE} from '../config/holo-config'
+import {glideDistance, releaseVelocity, setTrack} from './holo-essentials'
+import {axisSize} from './orientation-handler'
+import {placeCarousel, stopMove} from './holo-render'
+import {CSS_CLASSES, EVENTS, GESTURE, PATH_ATTRIBUTE} from '../config/holo-config'
 
 /*
-  One pointer path for mouse, touch and pen (Pointer Events).
+  Gestures, for mouse, touch, pen (Pointer Events) and trackpads (wheel
+  events), all working in items so every effect moves the same way.
 
-  - The carousel only takes the gesture once it is clearly along its
-    axis; a gesture across it is left to the page, so a horizontal
-    carousel never blocks scrolling the page on a phone (the CSS sets
-    touch-action: pan-y, pan-x for vertical ones).
-  - The drag follows the finger 1:1 and pulls with resistance past
-    either end.
-  - On release a flick carries on by its speed; a slow release snaps to
-    the nearest item.
-  - The click that ends a drag is swallowed, so a link or a focusable
-    item under the pointer does not fire.
+  Pointer: a press is a tap, a long press, a drag along the carousel or
+  a move across it, decided once the pointer has moved past a threshold
+  that suits the pointer (4px mouse, 10px touch) by the angle of the
+  move: within 35° of the axis it is a drag, beyond 55° it is across
+  (the page scrolls, or a parent carousel on that axis takes it), and in
+  between Holo waits for more movement.
+
+  - A drag follows the pointer 1:1 and stretches past the ends.
+  - On release it glides on from where it was let go, slowing down
+    evenly (a faster flick goes further), and lands on an item. A short
+    quick flick always moves at least one. momentum: false stops it
+    where it was let go instead. The swipe is reported.
+  - A nested carousel at its edge hands the drag to its parent.
+  - Taps, double taps and long presses are reported on their own channels.
+  - Clicks right after a drag or long press are swallowed.
+
+  Trackpad: a two-finger swipe along the carousel drags it live and
+  lands when the fingers lift. macOS keeps sending momentum events after
+  that; they are the gesture's tail and are ignored, so one swipe is one
+  move. A swipe across the carousel stays the page's scroll. A mouse
+  wheel (notched) steps, with the wheel option.
 */
 
 const axisOf = (vertical: boolean, x: number, y: number) =>
   vertical ? {main: y, cross: x} : {main: x, cross: y}
 
-/** apply the dragged position at most once per frame */
-const scheduleFrame = (id: string): void => {
-  const instance = holoStore.getInstance(id)
+const slopFor = (pointerType: string): number =>
+  pointerType === 'mouse' ? GESTURE.SLOP_MOUSE : pointerType === 'touch' ? GESTURE.SLOP_TOUCH : GESTURE.SLOP
+
+/** the angle (deg) of a move from the carousel's axis */
+export const moveAngle = (main: number, cross: number): number =>
+  (Math.atan2(Math.abs(cross), Math.abs(main)) * 180) / Math.PI
+
+/**
+ * What a move is so far: 'wait' (too short or too diagonal to tell),
+ * 'main' (along the axis) or 'cross'. Pure.
+ */
+export const classifyMove = (main: number, cross: number, slop: number): 'wait' | 'main' | 'cross' => {
+  const distance = Math.hypot(main, cross)
+  if (distance < slop) return 'wait'
+  const angle = moveAngle(main, cross)
+  if (angle <= GESTURE.AXIS_LOCK) return 'main'
+  if (angle >= GESTURE.AXIS_CROSS) return 'cross'
+  // diagonal: wait for a clearer move, then take the larger component
+  if (distance < slop * 2.5) return 'wait'
+  return Math.abs(main) >= Math.abs(cross) ? 'main' : 'cross'
+}
+
+/** a swipe's direction from its move */
+export const swipeDirection = (dx: number, dy: number): 'left' | 'right' | 'up' | 'down' =>
+  Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : dy < 0 ? 'up' : 'down'
+
+/**
+ * Where a released drag lands (in items): from where it was let go, plus
+ * the glide its speed carries it (momentum), on the nearest item. A
+ * quick flick that would land back where it started moves one item that
+ * way instead. Pure.
+ */
+export const landing = (
+  startTrack: number,
+  track: number,
+  velocity: number,
+  size: number,
+  momentum: boolean
+): number => {
+  const glide = momentum ? glideDistance(velocity, size) : 0
+  const target = Math.round(track + glide)
+  const start = Math.round(startTrack)
+  const flick = Math.abs(velocity * size) >= GESTURE.FLICK
+  if (target === start && flick) return start + Math.sign(velocity)
+  return target
+}
+
+/**
+ * Where a trackpad swipe lands when its events stop: the nearest item,
+ * or the next one if it moved far enough towards it to mean it. Pure.
+ */
+export const wheelLanding = (startTrack: number, track: number): number => {
+  const start = Math.round(startTrack)
+  const target = Math.round(track)
+  const moved = track - startTrack
+  if (target === start && Math.abs(moved) >= GESTURE.WHEEL_INTENT) return start + Math.sign(moved)
+  return target
+}
+
+/** draw the dragged position at most once per frame */
+const scheduleFrame = (path: string): void => {
+  const instance = holoStore.getInstance(path)
   if (!instance || instance.frame) return
   holoStore.setFrame(
-    id,
+    path,
     requestAnimationFrame(() => {
-      holoStore.setFrame(id, 0)
-      holoStore.applyDomTransform(id)
+      holoStore.setFrame(path, 0)
+      placeCarousel(path)
     })
   )
 }
 
-const cancelFrame = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance || !instance.frame) return
+const cancelFrame = (path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.frame) return
   cancelAnimationFrame(instance.frame)
-  holoStore.setFrame(id, 0)
+  holoStore.setFrame(path, 0)
+}
+
+const clearLongPress = (path: string): void => {
+  const touchState = holoStore.getInstance(path)?.touchState
+  if (touchState?.longPressTimer) {
+    clearTimeout(touchState.longPressTimer)
+    touchState.longPressTimer = 0
+  }
+}
+
+/** the item index under an event target in a carousel, or -1 */
+const indexAt = (path: string, target: EventTarget | null): number => {
+  const container = holoStore.getDom(path)?.container
+  let slot = target as HTMLElement | null
+  while (slot && slot.parentElement !== container) slot = slot.parentElement
+  if (!slot || !container) return -1
+  return slot.dataset.index !== undefined
+    ? Number(slot.dataset.index)
+    : Array.prototype.indexOf.call(container.children, slot)
+}
+
+/** the drag begins: capture the pointer, stop animating, hold auto-play */
+const beginDrag = (path: string, pointerId: number): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.Dom) return
+  clearLongPress(path)
+  instance.touchState.dragging = true
+  instance.Dom.carousel.classList.add(CSS_CLASSES.DRAGGING)
+  try {
+    instance.Dom.container.setPointerCapture(pointerId)
+  } catch {
+    // the pointer may already be gone
+  }
+  holoStore.updateStyle(path, false)
+  setHold(path, 'pointer', true)
 }
 
 /**
  * Handle pointer down on a carousel
  */
-export const _touchStart = (e: PointerEvent, id: string): void => {
-  if (!id) {
-    log.error('@_touchStart: missing carousel ID')
-    return
-  }
-
-  const instance = holoStore.getInstance(id)
-  if (!instance) {
-    log.error('@_touchStart: undefined getInstance for: ' + id)
+export const _touchStart = (e: PointerEvent, path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.Dom) {
+    log.error('@_touchStart: unknown carousel ' + path)
     return
   }
 
   const {io} = instance.virtualDom
   const mouse = e.pointerType === 'mouse'
-  if (!io.enabled || (mouse ? !io.drag || e.button !== 0 : !io.swipe)) return
-  if (holoStore.getSystem().pressedId) return // one gesture at a time
+  if (!io.enabled || (mouse ? e.button !== 0 : !io.swipe)) return
+  // a nested carousel took this press already (events bubble inner → outer)
+  if (holoStore.getSystem().pressedPath) return
 
+  const onButton = !!(e.target as Element).closest?.('button, a, input, select, textarea')
   // a mouse would otherwise start dragging the image or selecting text
-  if (mouse) e.preventDefault()
+  if (mouse && io.drag && !onButton) e.preventDefault()
 
-  cancelFrame(id)
-  const vertical = !!io.orientation
+  cancelFrame(path)
+  // a press on a gliding carousel catches it where it is
+  const caught = stopMove(path)
+  if (caught) instance.virtualDom.track = instance.virtualDom.shown
   const now = performance.now()
-  const start = vertical
-    ? instance.virtualDom.transformY
-    : instance.virtualDom.transformX
-
-  holoStore.updateTouchState(id, {
+  const touchState = instance.touchState
+  holoStore.updateTouchState(path, {
     pressed: true,
     dragging: false,
     cancelled: false,
+    longPressed: false,
+    caught,
+    pointerType: e.pointerType,
     pointerId: e.pointerId,
     positionX: e.clientX,
     positionY: e.clientY,
     currentX: e.clientX,
     currentY: e.clientY,
-    distance: 0,
+    startTrack: instance.virtualDom.shown,
     TouchStartTimeStamp: now,
-    snapShotWidth: instance.virtualDom.transformX || 0,
-    snapShotHeight: instance.virtualDom.transformY || 0,
-    samples: [[now, start]],
-    suppressClick: false
+    samples: [[now, instance.virtualDom.shown]]
   })
-  holoStore.updateSystem({pressedId: id})
+  holoStore.updateSystem({pressedPath: path})
+
+  // a still press becomes a long press
+  clearLongPress(path)
+  touchState.longPressTimer = setTimeout(() => {
+    const current = holoStore.getInstance(path)
+    if (!current) return
+    const state = current.touchState
+    state.longPressTimer = 0
+    if (!state.pressed || state.dragging || state.cancelled) return
+    state.longPressed = true
+    state.suppressUntil = performance.now() + GESTURE.CLICK_GUARD + 600
+    current.branch.call(EVENTS.LONG_PRESS, {
+      index: indexAt(path, e.target),
+      x: state.currentX,
+      y: state.currentY
+    })
+  }, GESTURE.LONG_PRESS)
+}
+
+/** can this carousel move further that way (for a handoff) */
+const canMove = (path: string, direction: number): boolean => {
+  const virtualDom = holoStore.getVirtualDom(path)
+  if (!virtualDom || virtualDom.maxIndex <= 0) return false
+  if (virtualDom.wrap) return true
+  return direction < 0 ? virtualDom.index > 0 : virtualDom.index < virtualDom.maxIndex
+}
+
+/** pass the drag up to the parent carousel */
+const handOff = (from: string, to: string, e: PointerEvent): void => {
+  const child = holoStore.getInstance(from)
+  const parent = holoStore.getInstance(to)
+  if (!child || !parent) return
+  _release(from)
+  child.touchState.suppressUntil = performance.now() + GESTURE.CLICK_GUARD
+  setTrack(from, Math.round(child.touchState.startTrack)) // spring back
+
+  const now = performance.now()
+  holoStore.updateTouchState(to, {
+    pressed: true,
+    dragging: false,
+    cancelled: false,
+    longPressed: false,
+    pointerType: e.pointerType,
+    pointerId: e.pointerId,
+    positionX: e.clientX,
+    positionY: e.clientY,
+    currentX: e.clientX,
+    currentY: e.clientY,
+    startTrack: parent.virtualDom.shown,
+    TouchStartTimeStamp: now,
+    samples: [[now, parent.virtualDom.shown]]
+  })
+  holoStore.updateSystem({pressedPath: to})
+  beginDrag(to, e.pointerId)
 }
 
 /**
  * Handle pointer movement (document-wide while pressed)
  */
 export const _touchMove = (e: PointerEvent): void => {
-  const id = holoStore.getSystem().pressedId
-  if (!id) return
-  const instance = holoStore.getInstance(id)
+  const path = holoStore.getSystem().pressedPath
+  if (!path) return
+  const instance = holoStore.getInstance(path)
   if (!instance) return
-  const {touchState, virtualDom, Dom} = instance
-  if (e.pointerId !== touchState.pointerId || touchState.cancelled) return
+  const {touchState, virtualDom} = instance
+  if (e.pointerId !== touchState.pointerId) return
+  touchState.currentX = e.clientX
+  touchState.currentY = e.clientY
+  if (touchState.cancelled || touchState.longPressed) return
 
   const vertical = !!virtualDom.io.orientation
   const {main, cross} = axisOf(
@@ -118,147 +271,314 @@ export const _touchMove = (e: PointerEvent): void => {
     e.clientX - touchState.positionX,
     e.clientY - touchState.positionY
   )
-  touchState.currentX = e.clientX
-  touchState.currentY = e.clientY
 
   if (!touchState.dragging) {
-    if (Math.abs(main) < GESTURE.SLOP && Math.abs(cross) < GESTURE.SLOP) return
-    if (Math.abs(cross) > Math.abs(main)) {
-      // across the carousel: the page scrolls, Holo lets go
-      touchState.cancelled = true
-      _release(id)
+    const kind = classifyMove(main, cross, slopFor(touchState.pointerType))
+    if (kind === 'wait') return
+    clearLongPress(path)
+    if (kind === 'cross') {
+      // across this carousel: a parent on that axis takes it, else the page
+      const parent = instance.parent ? holoStore.getInstance(instance.parent) : null
+      if (
+        parent &&
+        !!parent.virtualDom.io.orientation !== vertical &&
+        canMove(parent.path, -Math.sign(cross))
+      ) {
+        handOff(path, parent.path, e)
+        return
+      }
+      touchState.cancelled = true // watch it to the end, to report the swipe
       return
     }
-    touchState.dragging = true
-    Dom.carousel.classList.add(CSS_CLASSES.DRAGGING)
-    try {
-      Dom.container.setPointerCapture(e.pointerId)
-    } catch {
-      // the pointer may already be gone
+    const mouse = touchState.pointerType === 'mouse'
+    const allowed = mouse ? virtualDom.io.drag : virtualDom.io.swipe
+    if (!allowed || (virtualDom.maxIndex <= 0 && !instance.parent)) {
+      touchState.cancelled = true
+      return
     }
-    holoStore.updateStyle(id, false)
-    setHold(id, 'pointer', true)
+    beginDrag(path, e.pointerId)
   }
 
   if (e.cancelable) e.preventDefault()
 
-  const start = vertical
-    ? touchState.snapShotHeight || 0
-    : touchState.snapShotWidth || 0
-  const position = rubberBand(
-    start + main * touchState.multiplier,
-    virtualDom.endOfSlidePosition
-  )
-  if (vertical) virtualDom.transformY = position
-  else virtualDom.transformX = position
-  touchState.distance = -main
+  const size = axisSize(virtualDom) || 1
+  const track = touchState.startTrack - main / size
 
+  // a nested carousel at its edge passes the drag to its parent
+  if (!virtualDom.wrap && instance.parent) {
+    const over = track < 0 ? track : track > virtualDom.maxIndex ? track - virtualDom.maxIndex : 0
+    const parent = holoStore.getInstance(instance.parent)
+    if (
+      parent &&
+      over !== 0 &&
+      Math.abs(over) * size > GESTURE.SLOP * 4 &&
+      !!parent.virtualDom.io.orientation === vertical &&
+      canMove(parent.path, Math.sign(over))
+    ) {
+      handOff(path, parent.path, e)
+      return
+    }
+  }
+
+  virtualDom.track = track
   const now = performance.now()
-  touchState.samples.push([now, position])
+  touchState.samples.push([now, track])
   if (touchState.samples.length > 12) touchState.samples.shift()
-
-  scheduleFrame(id)
+  scheduleFrame(path)
 }
 
 /** end a press without landing anywhere */
-const _release = (id: string): void => {
-  const instance = holoStore.getInstance(id)
+const _release = (path: string): void => {
+  const instance = holoStore.getInstance(path)
   if (!instance) return
   const {touchState, Dom} = instance
+  clearLongPress(path)
   try {
-    if (Dom.container.hasPointerCapture?.(touchState.pointerId)) {
+    if (Dom?.container.hasPointerCapture?.(touchState.pointerId)) {
       Dom.container.releasePointerCapture(touchState.pointerId)
     }
   } catch {
     // nothing captured
   }
-  Dom.carousel.classList.remove(CSS_CLASSES.DRAGGING)
+  Dom?.carousel.classList.remove(CSS_CLASSES.DRAGGING)
   touchState.pressed = false
   touchState.dragging = false
-  holoStore.updateSystem({pressedId: null})
-  setHold(id, 'pointer', false)
+  if (holoStore.getSystem().pressedPath === path) holoStore.updateSystem({pressedPath: null})
+  setHold(path, 'pointer', false)
 }
 
 /**
  * Handle pointer up / cancel
  */
 export const _touchEnd = (e: PointerEvent): void => {
-  const id = holoStore.getSystem().pressedId
-  if (!id) return
-  const instance = holoStore.getInstance(id)
+  const path = holoStore.getSystem().pressedPath
+  if (!path) return
+  const instance = holoStore.getInstance(path)
   if (!instance) return
   const {touchState, virtualDom, branch} = instance
   if (e.pointerId !== touchState.pointerId) return
 
   const dragged = touchState.dragging
-  cancelFrame(id)
-  _release(id)
-  if (!dragged) return
+  const cancelled = touchState.cancelled
+  const longPressed = touchState.longPressed
+  const now = performance.now()
+  const dx = touchState.currentX - touchState.positionX
+  const dy = touchState.currentY - touchState.positionY
+  const elapsed = now - (touchState.TouchStartTimeStamp || now)
+  cancelFrame(path)
+  _release(path)
 
-  // the click that follows a drag is not a click
-  touchState.suppressClick = true
-
-  const vertical = !!virtualDom.io.orientation
-  const size = (vertical ? virtualDom.item.height : virtualDom.item.width) || 0
-  const position = vertical ? virtualDom.transformY : virtualDom.transformX
-  const velocity =
-    e.type === 'pointercancel'
-      ? 0
-      : releaseVelocity(touchState.samples, performance.now())
-
-  if (virtualDom.io.snap) {
-    const index = releaseIndex(
-      virtualDom.index,
-      position,
-      velocity,
-      size,
-      virtualDom.maxIndex
-    )
-    // goTo does not move when the index is unchanged, so place it here:
-    // a short drag still has to spring back
-    if (index === virtualDom.index) goTo(id, index)
-    else branch.call(EVENTS.GO_TO, {index})
+  // a move across the carousel (the page scrolled): report the swipe only
+  if (cancelled) {
+    if (touchState.caught) {
+      touchState.caught = false
+      branch.call(EVENTS.GO_TO, virtualDom.wrap ? {track: Math.round(virtualDom.track), speed: 0} : {index: Math.round(virtualDom.track), speed: 0})
+    }
+    if (Math.hypot(dx, dy) >= GESTURE.SWIPE_MIN) {
+      branch.call(EVENTS.SWIPE, {
+        direction: swipeDirection(dx, dy),
+        distance: Math.round(Math.hypot(dx, dy)),
+        velocity: elapsed > 0 ? Math.hypot(dx, dy) / elapsed : 0,
+        moved: false
+      })
+    }
     return
   }
 
-  // free mode: glide by the release speed and stop where it lands
-  const landed = Math.min(
-    0,
-    Math.max(position + velocity * GESTURE.MOMENTUM, virtualDom.endOfSlidePosition)
-  )
-  const before = virtualDom.index
-  if (vertical) virtualDom.transformY = landed
-  else virtualDom.transformX = landed
-  virtualDom.index = Math.min(nearestIndex(landed, size), virtualDom.maxIndex)
-  virtualDom.endOfSlide =
-    landed >= 0 ? 1 : landed <= virtualDom.endOfSlidePosition ? -1 : 0
-  holoStore.updateStyle(id, true)
-  holoStore.applyDomTransform(id)
-  renderState(id)
-  if (virtualDom.index !== before) branch.call(EVENTS.CHANGE, changeOf(virtualDom))
+  if (!dragged) {
+    // caught mid-glide and let go without dragging: settle on an item
+    if (touchState.caught) {
+      touchState.caught = false
+      touchState.suppressUntil = now + GESTURE.CLICK_GUARD
+      if (virtualDom.wrap) branch.call(EVENTS.GO_TO, {track: Math.round(virtualDom.track), speed: 0})
+      else branch.call(EVENTS.GO_TO, {index: Math.round(virtualDom.track), speed: 0})
+      return
+    }
+    if (longPressed || e.type === 'pointercancel') return
+    // a tap (and maybe the second of a double tap)
+    const last = touchState.lastTap
+    const tap = {time: now, x: touchState.currentX, y: touchState.currentY}
+    const index = indexAt(path, e.target)
+    branch.call(EVENTS.TAP, {index, x: tap.x, y: tap.y})
+    if (now - last.time <= GESTURE.DOUBLE_TAP && Math.hypot(tap.x - last.x, tap.y - last.y) <= GESTURE.DOUBLE_TAP_DISTANCE) {
+      branch.call(EVENTS.DOUBLE_TAP, {index, x: tap.x, y: tap.y})
+      touchState.lastTap = {time: 0, x: 0, y: 0}
+    } else {
+      touchState.lastTap = tap
+    }
+    return
+  }
+
+  touchState.suppressUntil = now + GESTURE.CLICK_GUARD // the click after a drag is not a click
+
+  const size = axisSize(virtualDom) || 1
+  const velocity = e.type === 'pointercancel' ? 0 : releaseVelocity(touchState.samples, now)
+  const track = virtualDom.track
+
+  branch.call(EVENTS.SWIPE, {
+    direction: swipeDirection(dx, dy),
+    distance: Math.round(Math.hypot(dx, dy)),
+    velocity: Math.abs(velocity * size),
+    moved: true
+  })
+
+  if (!virtualDom.io.snap) {
+    // free: glide by the release speed and stop where it lands
+    const landed = track + (virtualDom.io.momentum ? glideDistance(velocity, size) : 0)
+    setTrack(path, virtualDom.wrap ? landed : Math.max(0, Math.min(landed, virtualDom.maxIndex)), true, velocity)
+    return
+  }
+
+  const target = landing(touchState.startTrack, track, velocity, size, !!virtualDom.io.momentum)
+  // the landing carries straight on at the speed the drag was let go
+  if (virtualDom.wrap) branch.call(EVENTS.GO_TO, {track: target, speed: velocity})
+  else branch.call(EVENTS.GO_TO, {index: Math.max(0, Math.min(target, virtualDom.maxIndex)), speed: velocity})
+}
+
+// --- trackpad / mouse wheel ------------------------------------------
+
+/** a notched mouse wheel (lines or pages, or big whole steps on one axis) */
+export const isNotchedWheel = (e: Pick<WheelEvent, 'deltaMode' | 'deltaX' | 'deltaY'>): boolean =>
+  e.deltaMode !== 0 ||
+  (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY))
+
+/** a trackpad gesture's events stopped: land on an item */
+const endWheel = (path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance) return
+  const {touchState, virtualDom, branch, Dom} = instance
+  const wheel = touchState.wheel
+  if (wheel.timer) clearTimeout(wheel.timer)
+  wheel.timer = 0
+  const axis = wheel.axis
+  wheel.axis = ''
+  wheel.main = 0
+  wheel.cross = 0
+  if (axis !== 'main') return
+
+  touchState.dragging = false
+  Dom?.carousel.classList.remove(CSS_CLASSES.DRAGGING)
+  setHold(path, 'pointer', false)
+  touchState.suppressUntil = performance.now() + GESTURE.CLICK_GUARD
+
+  const size = axisSize(virtualDom) || 1
+  const target = wheelLanding(touchState.startTrack, virtualDom.track)
+  const moved = virtualDom.track - touchState.startTrack
+  if (Math.abs(moved) >= GESTURE.WHEEL_INTENT) {
+    branch.call(EVENTS.SWIPE, {
+      direction: virtualDom.io.orientation ? (moved > 0 ? 'up' : 'down') : moved > 0 ? 'left' : 'right',
+      distance: Math.round(Math.abs(moved) * size),
+      velocity: 0,
+      moved: true
+    })
+  }
+  // carry on from the speed it was moving at (usually at rest by now)
+  const speed = releaseVelocity(touchState.samples, performance.now(), GESTURE.WHEEL_IDLE + 60)
+  if (virtualDom.wrap) branch.call(EVENTS.GO_TO, {track: target, speed})
+  else branch.call(EVENTS.GO_TO, {index: Math.max(0, Math.min(target, virtualDom.maxIndex)), speed})
+}
+
+/**
+ * Wheel events on a carousel: trackpad swipes move it live (momentum
+ * included), a notched mouse wheel steps (with the wheel option). What
+ * is not the carousel's is left alone - the page (or a parent carousel)
+ * gets it.
+ */
+export const _wheel = (e: WheelEvent, path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance || e.defaultPrevented) return
+  const {virtualDom, touchState, branch, Dom} = instance
+  const io = virtualDom.io
+  if (!io.enabled || holoStore.getSystem().pressedPath) return
+  const vertical = !!io.orientation
+  const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? virtualDom.viewport || 400 : 1
+  const {main, cross} = axisOf(vertical, e.deltaX * scale, e.deltaY * scale)
+
+  // a mouse wheel: one step per notch burst (the channel is throttled)
+  if (isNotchedWheel(e)) {
+    if (!io.wheel) return
+    const delta = vertical ? e.deltaY : e.deltaY || e.deltaX
+    const blocked =
+      !virtualDom.wrap &&
+      !io.loop &&
+      ((delta > 0 && virtualDom.index >= virtualDom.maxIndex) || (delta < 0 && virtualDom.index <= 0))
+    if (blocked || delta === 0) return
+    e.preventDefault()
+    branch.call(EVENTS.WHEELER, {delta})
+    return
+  }
+
+  // a trackpad: a gesture lasts until its events stop
+  const wheel = touchState.wheel
+  const now = performance.now()
+  if (wheel.timer) clearTimeout(wheel.timer)
+  wheel.timer = setTimeout(() => endWheel(path), GESTURE.WHEEL_IDLE)
+  wheel.last = now
+
+  if (wheel.axis === 'cross') return // the page's
+
+  if (wheel.axis === '') {
+    // gather the first few px, then decide whose it is
+    wheel.main += main
+    wheel.cross += cross
+    const kind = classifyMove(wheel.main, wheel.cross, GESTURE.WHEEL_DECIDE)
+    if (kind === 'wait') return
+    const allowed = vertical ? io.wheel : io.swipe || io.wheel
+    if (kind === 'cross' || !allowed || virtualDom.maxIndex <= 0) {
+      wheel.axis = 'cross'
+      return
+    }
+    if (!canMove(path, Math.sign(wheel.main))) {
+      // at an end: a parent on the same axis takes it
+      const parent = instance.parent ? holoStore.getInstance(instance.parent) : null
+      if (parent && !!parent.virtualDom.io.orientation === vertical) {
+        wheel.axis = 'cross'
+        return
+      }
+    }
+    // it's ours: start from where things are drawn (a glide may be running)
+    wheel.axis = 'main'
+    stopMove(path)
+    touchState.startTrack = virtualDom.shown
+    touchState.samples = [[now, virtualDom.shown]]
+    virtualDom.track = virtualDom.shown + wheel.main / (axisSize(virtualDom) || 1)
+    touchState.dragging = true
+    Dom?.carousel.classList.add(CSS_CLASSES.DRAGGING)
+    holoStore.updateStyle(path, false)
+    setHold(path, 'pointer', true)
+    e.preventDefault()
+    scheduleFrame(path)
+    return
+  }
+
+  e.preventDefault()
+  virtualDom.track += main / (axisSize(virtualDom) || 1)
+  touchState.samples.push([now, virtualDom.track])
+  if (touchState.samples.length > 12) touchState.samples.shift()
+  scheduleFrame(path)
+}
+
+/** the carousel element nearest to an event target */
+export const nearestCarousel = (target: EventTarget | null): string | null => {
+  const element = (target as Element | null)?.closest?.(`[${PATH_ATTRIBUTE}]`)
+  return element ? element.getAttribute(PATH_ATTRIBUTE) : null
 }
 
 /**
  * Handle click/tap on carousel item
  */
-export const _focus = (e: MouseEvent | TouchEvent, id: string): boolean => {
-  const target = e.target as HTMLElement
-  const holoItem = target.closest(`.${CSS_CLASSES.ITEM}`) as HTMLElement | null
-
-  if (!holoItem) return false
-
-  const instance = holoStore.getInstance(id)
-  if (!instance) {
-    log.error('_focus holo instance not found')
-    return false
-  }
-
-  instance.branch.call(EVENTS.ACTIVATE, holoItem)
+export const _focus = (e: MouseEvent | TouchEvent, path: string): boolean => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.Dom) return false
+  let slot: HTMLElement | null = e.target as HTMLElement
+  while (slot && slot.parentElement !== instance.Dom.container) slot = slot.parentElement
+  if (!slot) return false
+  instance.branch.call(EVENTS.ACTIVATE, slot)
   return true
 }
 
 /**
- * Setup global pointer listeners (one set for every carousel on the page)
+ * Setup page-wide pointer listeners (one set for every carousel)
  */
 export const setupGlobalTouchListeners = (): (() => void) => {
   const options: AddEventListenerOptions = {passive: false}
@@ -270,9 +590,8 @@ export const setupGlobalTouchListeners = (): (() => void) => {
     document.removeEventListener('pointermove', _touchMove, options)
     document.removeEventListener('pointerup', _touchEnd)
     document.removeEventListener('pointercancel', _touchEnd)
-
-    const instances = holoStore.getAllInstances()
-    for (const id in instances) cancelFrame(id)
+    const all = holoStore.getAllInstances()
+    for (const path in all) cancelFrame(path)
   }
 }
 
@@ -281,6 +600,8 @@ export default {
   _touchStart,
   _touchMove,
   _touchEnd,
+  _wheel,
   _focus,
+  nearestCarousel,
   setupGlobalTouchListeners
 }

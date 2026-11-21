@@ -24,63 +24,129 @@ yarn add holo-carousel
 
 ## Usage
 
-Holo 3 runs on [Cyre](https://github.com/neuralline/cyre) v5. Cyre belongs to
-your app: start it once at your entry and keep `control`; Holo only adds a
-`holo` branch (each carousel gets `holo/<id>`).
+Holo runs on [Cyre](https://github.com/neuralline/cyre) v5. Cyre belongs to
+your app: start it once and keep `control`. `useHolo` adds a branch to your
+Cyre tree and builds nothing until you ask.
 
 ```js
 import {Cyre} from 'cyre'
-import Holo from 'holo-carousel'
+import {useHolo} from 'holo-carousel'
 
 const {cyre, control} = Cyre.init()
+const holo = useHolo(cyre.branch('ui'))        // ui/holo
 
-Holo.INIT() // builds every .holo-carousel on the page
-// or: Holo.INIT({className: 'my-carousel', cyre: cyre.branch('ui')})
+// from data: Holo builds the container and a slot per item
+const films = holo.create(document.getElementById('films'), {
+  items: movies,
+  key: movie => movie.id,                       // updates reuse slots
+  render: (movie, index, slot) => {
+    slot.innerHTML = `<img src="${movie.poster}" alt="${movie.title}">`
+  },
+  effect: 'center', loop: 'infinite', controller: true
+})
+
+films.on('change', ({index, page, pages}) => {})
+films.set(await fetchMovies())                  // keyed update
+cyre.call('ui/holo/films/items', list)          // or from anywhere, by path
+
+// from markup (opt-in)
+holo.scan()                                      // every .holo-carousel
+holo.scan(sidebar, {selector: '[data-holo]'})
 ```
 
-A plain `<script src="js/holo.js">` page needs nothing else: that bundle
-carries its own Cyre and starts it.
-
-```html
-<carousel class="holo-carousel" data-animate="1" data-duration="4000" data-controller="1">
-  <ul class="holo-container">
-    <li class="holo"><img src="img/1.jpg" alt="" /></li>
-    ...
-  </ul>
-</carousel>
-```
+`useHolo()` with no node starts Cyre itself if no app did, and its handle
+has `control`. A plain `<script src="js/holo.js">` page gets `window.useHolo`
+and the v2 `window.Holo` (`Holo.INIT()` scans, as before).
 
 ### Options
 
-Pass to `Holo.BUILD(element, options)` / `Holo.carousel(id, options)`, or as
+Pass to `holo.create(element, options)` or `carousel.options(...)`, or as
 `data-*` attributes.
 
 | option | default | |
 |---|---|---|
-| `animate` | 0 | auto-play (pauses on hover, focus, drag, hidden tab, off screen) |
-| `duration` | 5000 | auto-play interval, ms |
-| `controller` | 0 | prev / next buttons, dots (a `3 / 18` counter when they don't fit), pause button |
-| `loop` | 0 | next on the last item goes to the first, and back |
-| `step` | 0 | items per next / prev (0 = a page) |
-| `slots` | 0 | items visible at once (0 = as many as fit) |
-| `wheel` | 0 | mouse wheel / trackpad, one step per gesture |
-| `drag` / `swipe` | 1 | mouse drag / touch and pen swipe |
-| `snap` | 1 | land on whole items (0 = free glide) |
-| `keyboard` | 1 | arrows, Home, End, PageUp / PageDown when focused |
-| `orientation` | 0 | 1 = vertical |
-| `transition` | 600 | slide transition, ms (0 with reduced motion) |
+| `items`, `render`, `key`, `unrender` | | data mode; `render(item, index, slot)` fills a slot; `items` may be a promise |
+| `effect` | `'slide'` | `slide`, `center`, `fade`, `ring`, `coverflow`, `album`, `shuffle`, `flip`, `cube`, `zoom`, `cover`, `reveal`, `wipe`, `iris`, `kenburns` |
+| `placeholder` | `'shimmer'` | while images or async items load: `shimmer`, `pulse`, `blur` (blur-up), `none` |
+| `placeholders` | fit | skeleton slots while items load |
+| `progress` | off | a bar counting down to the next auto-play move |
+| `builds` | off | `[data-build]` content in the current slide comes in step by step (`data-build="left|right|zoom|fade"`) |
+| `loop` | `false` | `'rewind'` jumps back at the ends, `'infinite'` wraps seamlessly |
+| `animate` / `duration` | off / 5000 | auto-play (pauses on hover, focus, drag, hidden tab, off screen) |
+| `controller` | off | prev / next buttons, dots (`3 / 18` when they don't fit), pause |
+| `step` / `slots` | page / fit | items per next / prev; items visible |
+| `breakpoints` | | `{0: {slots: 1}, 768: {slots: 3, controller: 1}}`, by carousel width |
+| `virtual` / `buffer` | off / 2 | only the visible items (plus buffer) in the DOM |
+| `lazy` | 1 | load `data-src` images this many pages ahead |
+| `hash` | | keep the position in the URL: `#<hash>=<index>` |
+| `defer` | off | set up only once near the screen |
+| `momentum` | on | a released drag glides on by its speed and lands on an item; off: it stops where it was let go |
+| `wheel` | off | a notched mouse wheel steps (trackpad swipes work with `swipe`) |
+| `drag`, `swipe`, `keyboard`, `snap`, `focus` | on | input; `snap: false` glides freely |
+| `orientation` | horizontal | `'vertical'` |
+| `transition` | 600 | ms (0 with reduced motion) |
 
-### API
+### Handles
 
 ```js
-Holo.next(id) / prev / first / last
-Holo.goTo(id, index)
-Holo.state(id)            // {index, page, pages, count, slots, atStart, atEnd}
-Holo.pause(id) / play(id)
-Holo.on(id, Holo.EVENTS.CHANGE, state => ...)
-Holo.refresh()            // re-measure every carousel
-Holo.remove(id) / cleanup()
+// carousel
+c.next() / prev() / first() / last() / goTo(i)
+c.state()                 // {index, page, pages, count, slots, atStart, atEnd, path}
+c.pause() / play()
+c.on('change', fn)        // any of its channels; returns unsubscribe
+c.set(items) / append(items) / remove(keyOrIndex) / items()
+c.loading(true, count?)   // skeletons while you fetch; set(items) puts the items back
+c.fullscreen()            // present (Space / Enter go on)
+c.options({...})          // in place, keeps subscribers and position
+c.create(el, opts)        // a nested carousel: a sub-branch
+c.children() / refresh() / destroy()
+
+// instance
+holo.create / scan / get(idOrPath) / all()
+holo.link(main, thumbs, 'follow' | 'sync')
+holo.refresh() / destroy()
 ```
+
+### Gestures
+
+Mouse, touch, pen and trackpad all go through one recogniser. A move is
+a drag only when it runs along the carousel (within 35° of its axis);
+across it the page scrolls, or a parent carousel on that axis takes it.
+A released drag glides on from where it was let go, slowing down
+evenly - a faster flick goes further, and the move takes longer the
+further it goes. A trackpad swipe moves the carousel with every event,
+including the system's momentum after the fingers lift, and lands on
+the nearest item when it stops (the next one, if it was heading there). Each gesture is a channel:
+
+```js
+c.on('swipe', ({direction, distance, velocity, moved}) => {})   // moved: false when the page had it
+c.on('tap', ({index}) => {})
+c.on('double-tap', ({index}) => {})
+c.on('long-press', ({index}) => {})
+```
+
+### Motion
+
+Every move is animated in one place, frame by frame. A released drag
+or trackpad swipe lands on a curve that leaves at exactly the speed it
+was let go and arrives at rest; buttons, keys and auto-play ease out.
+Pressing a moving carousel catches it where it is. Changing `effect`
+morphs each item from its old place to its new one (View Transitions;
+a crossfade where they aren't available).
+
+### Effects
+
+`slide` and `center` move a strip; `fade` crossfades; `ring` turns a 3D
+ring. `coverflow`, `album` (a pile of photos at slight angles), `shuffle`
+(a deck: the top card swings out and back underneath), `flip`, `cube` and
+`zoom` are stage effects: Holo animates the position frame by frame and
+draws each item from its distance to it, so every card follows its own
+path - and a drag scrubs through the same motion. `cover`, `reveal`,
+`wipe`, `iris` and `kenburns` are presentation transitions; with
+`progress`, `builds` and `fullscreen()` a carousel is a slide deck.
+
+A carousel with `null` for its element is headless: the same model and
+channels with no DOM, for tests and servers.
 
 ## Holo examples
 

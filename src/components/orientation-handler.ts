@@ -1,113 +1,366 @@
 //src/components/orientation-handler.ts
 
 import {VirtualDomState} from '../types/interface'
-import {_snap, clampIndex, pageOf} from './holo-essentials'
+import {_snap, rubberBand, wrapIndex} from './holo-essentials'
 
-const itemSize = (virtualDom: VirtualDomState): number =>
-  (virtualDom.io.orientation
-    ? virtualDom.item.height
-    : virtualDom.item.width) || 0
+/*
+  Where things go, for each effect and orientation. Pure functions of
+  the track (the carousel's position in items, fractional while dragged);
+  holo-render.ts applies them to the DOM.
+*/
 
-const edgeOf = (position: number, end: number): number =>
-  position >= 0 ? 1 : position <= end ? -1 : 0
+/** item size along the carousel's axis */
+export const axisSize = (virtualDom: VirtualDomState): number =>
+  (virtualDom.io.orientation ? virtualDom.item.height : virtualDom.item.width) || 0
+
+/** centre offset: how far the first item sits from the start of the viewport */
+export const centreOffset = (virtualDom: VirtualDomState): number =>
+  virtualDom.io.effect === 'center'
+    ? Math.max(0, (virtualDom.viewport - axisSize(virtualDom)) / 2)
+    : 0
 
 /**
- * Put the carousel at an item index: the position, which end it is at,
- * and the page, for either orientation. Pure.
+ * The strip's offset (px) for a track. A strip that does not wrap stops
+ * at its ends - with resistance while dragged (`stretch`).
  */
-export const _place = (
+export const stripPosition = (
   virtualDom: VirtualDomState,
-  target: number
-): Partial<VirtualDomState> => {
-  const index = clampIndex(target, virtualDom.maxIndex)
-  const position = Math.max(
-    -index * itemSize(virtualDom) || 0,
-    virtualDom.endOfSlidePosition
-  )
-  const vertical = !!virtualDom.io.orientation
+  track: number,
+  stretch = false
+): number => {
+  const size = axisSize(virtualDom)
+  const offset = centreOffset(virtualDom)
+  const raw = offset - track * size
+  if (virtualDom.wrap) return raw
+  if (virtualDom.io.effect === 'center') {
+    const end = offset - virtualDom.maxIndex * size
+    return stretch ? offset + rubberBand(raw - offset, end - offset) : Math.min(offset, Math.max(raw, end))
+  }
+  const end = virtualDom.endOfSlidePosition
+  return stretch ? rubberBand(raw, end) : Math.min(0, Math.max(raw, end)) || 0
+}
 
+/**
+ * On a wrapping strip each item sits at the copy of its index nearest
+ * the view, so the strip never runs out: item i goes to i + k·count with
+ * k picked to keep it within half a ring of the visible items.
+ */
+export const wrappedSlot = (
+  index: number,
+  track: number,
+  count: number,
+  slots: number
+): number => {
+  const low = Math.floor(track) - Math.floor((count - slots) / 2)
+  const k = Math.ceil((low - index) / count)
+  return index + k * count
+}
+
+/** track positions a virtual window covers (each maps to an item) */
+export const virtualWindow = (
+  track: number,
+  slots: number,
+  buffer: number,
+  count: number,
+  wrap: boolean
+): number[] => {
+  const first = Math.floor(track) - buffer
+  const last = Math.ceil(track) + slots - 1 + buffer
+  const positions: number[] = []
+  for (let t = first; t <= last; t++) {
+    if (wrap || (t >= 0 && t < count)) positions.push(t)
+  }
+  return positions
+}
+
+/** which item a track position shows */
+export const itemAt = (position: number, count: number, wrap: boolean): number =>
+  wrap ? wrapIndex(position, count) : position
+
+/** ring: angle between items and the radius that fits them edge to edge */
+export const ringGeometry = (
+  count: number,
+  size: number
+): {angle: number; radius: number} => {
+  const angle = 360 / Math.max(1, count)
+  const radius = count > 2 ? Math.round(size / 2 / Math.tan(Math.PI / count)) : size
+  return {angle, radius}
+}
+
+/** fade: how visible item i is at a track (crossfades while dragged) */
+export const fadeOpacity = (
+  index: number,
+  track: number,
+  count: number,
+  wrap: boolean
+): number => {
+  const distance = wrap
+    ? Math.abs(((((index - track) % count) + count + count / 2) % count) - count / 2)
+    : Math.abs(index - track)
+  return Math.max(0, 1 - distance)
+}
+
+// --- stage effects ---------------------------------------------------
+
+/** a stable 0..1 number per item (scatter angles that don't change) */
+export const seeded = (n: number): number => {
+  const x = Math.sin((n + 1) * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
+
+/** how far item i is from the track: shortest way round when it wraps */
+export const signedDistance = (
+  index: number,
+  track: number,
+  count: number,
+  wrap: boolean
+): number => {
+  if (!wrap || count <= 0) return index - track
+  const d = (((index - track) % count) + count) % count
+  return d > count / 2 ? d - count : d
+}
+
+export interface StageStyle {
+  transform: string
+  opacity: number
+  zIndex: number
+  /** wipes and irises reveal by clipping */
+  clipPath?: string
+}
+
+export interface StageContext {
+  /** item width (along the axis) */
+  size: number
+  count: number
+  vertical: boolean
+}
+
+const along = (vertical: boolean, px: number): string =>
+  vertical ? `translateY(${px}px)` : `translateX(${px}px)`
+const across = (vertical: boolean, px: number): string =>
+  vertical ? `translateX(${px}px)` : `translateY(${px}px)`
+const turn = (vertical: boolean, deg: number): string =>
+  vertical ? `rotateX(${-deg}deg)` : `rotateY(${deg}deg)`
+
+const hidden: StageStyle = {transform: 'scale(0.9)', opacity: 0, zIndex: 0}
+
+/**
+ * coverflow: the current item flat in front, the rest turned away
+ * either side and packed behind it.
+ */
+export const coverflowStyle = (d: number, {size, vertical}: StageContext): StageStyle => {
+  const distance = Math.abs(d)
+  if (distance > 4.5) return hidden
+  const near = Math.sign(d) * Math.min(1, distance)
+  const offset = near * size * 0.55 + (d - near) * size * 0.3
+  const depth = -Math.min(1, distance) * size * 0.5 - Math.max(0, distance - 1) * 30
   return {
-    index,
-    transformX: vertical ? 0 : position,
-    transformY: vertical ? position : 0,
-    endOfSlide:
-      virtualDom.maxIndex === 0
-        ? index === 0
-          ? 1
-          : -1
-        : index === 0
-          ? 1
-          : index >= virtualDom.maxIndex
-            ? -1
-            : 0,
-    page: pageOf(index, virtualDom.maxIndex, virtualDom.step)
+    transform: `${along(vertical, offset)} translateZ(${depth}px) ${turn(vertical, -near * 55)}`,
+    opacity: distance > 3.5 ? 4.5 - distance : 1,
+    zIndex: Math.round(1000 - distance * 10)
   }
 }
 
 /**
- * Transform carousel horizontally with boundary checks
+ * album: a pile of photos, each at its own slight angle; the top one is
+ * straight. Going forward the top photo slides off to the side.
+ */
+export const albumStyle = (d: number, index: number, {size, vertical}: StageContext): StageStyle => {
+  const angle = (seeded(index) - 0.5) * 16
+  const dx = (seeded(index + 7) - 0.5) * 28
+  const dy = (seeded(index + 3) - 0.5) * 18
+  if (d >= 0) {
+    if (d > 6) return hidden
+    const settle = Math.min(1, d) // the top photo straightens
+    return {
+      transform: `${along(vertical, dx * settle)} ${across(vertical, dy * settle)} rotate(${angle * settle}deg) scale(${1 - Math.min(d, 6) * 0.012})`,
+      opacity: d > 5 ? 6 - d : 1,
+      zIndex: Math.round(1000 - d * 10)
+    }
+  }
+  const away = -d
+  if (away >= 1) return hidden // gone once the move is over
+  return {
+    transform: `${along(vertical, -away * size * 1.15)} ${across(vertical, -away * 24)} rotate(${angle - away * 22}deg)`,
+    opacity: away < 0.5 ? 1 : Math.max(0, 1 - (away - 0.5) * 2),
+    zIndex: 1010
+  }
+}
+
+/**
+ * shuffle: a deck. Going forward the top card swings out to the side and
+ * back in underneath; the rest move up one place.
+ */
+export const shuffleStyle = (d: number, {size, count, vertical}: StageContext): StageStyle => {
+  const place = ((d % count) + count) % count // 0 = top ... count-1 = bottom
+  const deck = (k: number) => {
+    const depth = Math.min(k, 5)
+    return {
+      transform: `${across(vertical, -depth * 9)} scale(${1 - depth * 0.04})`,
+      depthOpacity: k >= 5 ? Math.max(0, 6 - k) : 1
+    }
+  }
+  if (place > count - 1) {
+    // between the top (place → count) and the bottom (count - 1)
+    const out = count - place // 0 at the top, 1 at the bottom
+    const swing = Math.sin(Math.PI * out)
+    const bottom = Math.min(count - 1, 5)
+    return {
+      transform: `${along(vertical, swing * size * 1.05)} ${across(vertical, -bottom * 9 * out)} rotate(${swing * 9}deg) scale(${1 - bottom * 0.04 * out})`,
+      opacity: 1,
+      zIndex: out < 0.5 ? 2000 : 0
+    }
+  }
+  const {transform, depthOpacity} = deck(place)
+  return {transform, opacity: depthOpacity, zIndex: Math.round(1000 - place * 10)}
+}
+
+/** flip: the card turns over to show the next one */
+export const flipStyle = (d: number, {vertical}: StageContext): StageStyle =>
+  Math.abs(d) >= 1
+    ? hidden
+    : {transform: turn(vertical, -d * 180), opacity: 1, zIndex: Math.round(1000 - Math.abs(d) * 10)}
+
+/** cube: items on the faces of a turning cube */
+export const cubeStyle = (d: number, {size, vertical}: StageContext): StageStyle =>
+  Math.abs(d) >= 1
+    ? hidden
+    : {
+        transform: `translateZ(${-size / 2}px) ${turn(vertical, d * 90)} translateZ(${size / 2}px)`,
+        opacity: 1,
+        zIndex: Math.round(1000 - Math.abs(d) * 10)
+      }
+
+/** zoom: the current item grows and fades out as the next one comes up */
+export const zoomStyle = (d: number): StageStyle => {
+  const distance = Math.abs(d)
+  if (distance >= 1) return hidden
+  return d < 0
+    ? {transform: `scale(${1 + distance * 0.35})`, opacity: 1 - distance, zIndex: 1010}
+    : {transform: `scale(${1 - distance * 0.2})`, opacity: 1 - distance * 0.6, zIndex: 1000}
+}
+
+// --- presentation transitions ---------------------------------------
+
+/** cover: the next slide slides in over the current one, which dims back */
+export const coverStyle = (d: number, {size, vertical}: StageContext): StageStyle => {
+  if (d <= -1 || d >= 1) return hidden
+  if (d > 0) return {transform: along(vertical, d * size), opacity: 1, zIndex: 1010}
+  const under = -d
+  return {transform: `scale(${1 - under * 0.06})`, opacity: 1 - under * 0.45, zIndex: 1000}
+}
+
+/** reveal: the current slide slides away, uncovering the next one */
+export const revealStyle = (d: number, {size, vertical}: StageContext): StageStyle => {
+  if (d <= -1 || d >= 1) return hidden
+  if (d < 0) return {transform: along(vertical, d * size), opacity: 1, zIndex: 1010}
+  return {transform: `scale(${0.94 + 0.06 * (1 - d)})`, opacity: 0.55 + 0.45 * (1 - d), zIndex: 1000}
+}
+
+/** wipe: the next slide is uncovered by an edge sweeping across */
+export const wipeStyle = (d: number, {vertical}: StageContext): StageStyle => {
+  if (d <= -1 || d >= 1) return hidden
+  if (d > 0) {
+    const cut = `${(d * 100).toFixed(3)}%`
+    return {
+      transform: '',
+      opacity: 1,
+      zIndex: 1010,
+      clipPath: vertical ? `inset(${cut} 0 0 0)` : `inset(0 0 0 ${cut})`
+    }
+  }
+  return {transform: '', opacity: 1, zIndex: 1000}
+}
+
+/** iris: the next slide opens from a circle in the middle */
+export const irisStyle = (d: number): StageStyle => {
+  if (d <= -1 || d >= 1) return hidden
+  if (d > 0) {
+    return {transform: '', opacity: 1, zIndex: 1010, clipPath: `circle(${((1 - d) * 75).toFixed(3)}% at 50% 50%)`}
+  }
+  return {transform: '', opacity: 1, zIndex: 1000}
+}
+
+/** ken burns: slides crossfade; the current one drifts and zooms slowly (CSS) */
+export const kenburnsStyle = (d: number): StageStyle => {
+  const distance = Math.abs(d)
+  if (distance >= 1) return hidden
+  return {transform: '', opacity: 1 - distance, zIndex: Math.round(1000 - distance * 10)}
+}
+
+/** the style of item `index` for a stage effect at a (fractional) track */
+export const stageStyle = (
+  effect: string,
+  index: number,
+  track: number,
+  wrap: boolean,
+  context: StageContext
+): StageStyle => {
+  const {count} = context
+  if (effect === 'shuffle') return shuffleStyle(index - track, context)
+  const d = signedDistance(index, track, count, wrap)
+  switch (effect) {
+    case 'coverflow':
+      return coverflowStyle(d, context)
+    case 'album':
+      return albumStyle(d, index, context)
+    case 'flip':
+      return flipStyle(d, context)
+    case 'cube':
+      return cubeStyle(d, context)
+    case 'zoom':
+      return zoomStyle(d)
+    case 'cover':
+      return coverStyle(d, context)
+    case 'reveal':
+      return revealStyle(d, context)
+    case 'wipe':
+      return wipeStyle(d, context)
+    case 'iris':
+      return irisStyle(d)
+    case 'kenburns':
+      return kenburnsStyle(d)
+    default:
+      return {transform: '', opacity: d === 0 ? 1 : 0, zIndex: 0}
+  }
+}
+
+/**
+ * Transform carousel horizontally with boundary checks (v2 helper)
  */
 export const _transformX = (virtualDom: VirtualDomState): VirtualDomState => {
   const updated = {...virtualDom}
-
-  // Apply snap if enabled
   updated.transformX = updated.io.snap
     ? _snap(updated.transformX, updated.item.width || 0)
     : updated.transformX
-
-  // Reset vertical position
   updated.transformY = 0
-
-  // Handle boundaries
-  updated.transformX = Math.min(
-    0,
-    Math.max(updated.transformX, updated.endOfSlidePosition)
-  )
-  updated.endOfSlide = edgeOf(updated.transformX, updated.endOfSlidePosition)
-
+  updated.transformX = Math.min(0, Math.max(updated.transformX, updated.endOfSlidePosition))
+  updated.endOfSlide =
+    updated.transformX >= 0 ? 1 : updated.transformX <= updated.endOfSlidePosition ? -1 : 0
   return updated
 }
 
 /**
- * Transform carousel horizontally without snap (for smooth dragging)
+ * Transform carousel horizontally without snap (v2 helper)
  */
-export const _transformXLite = (
-  virtualDom: VirtualDomState
-): VirtualDomState => {
+export const _transformXLite = (virtualDom: VirtualDomState): VirtualDomState => {
   const updated = {...virtualDom}
-
-  // Reset vertical position
   updated.transformY = 0
-
-  // Handle boundaries without snap
-  updated.transformX = Math.min(
-    0,
-    Math.max(updated.transformX, updated.endOfSlidePosition)
-  )
-
+  updated.transformX = Math.min(0, Math.max(updated.transformX, updated.endOfSlidePosition))
   return updated
 }
 
 /**
- * Transform carousel vertically with boundary checks
+ * Transform carousel vertically with boundary checks (v2 helper)
  */
 export const _transformY = (virtualDom: VirtualDomState): VirtualDomState => {
   const updated = {...virtualDom}
-
-  // Apply snap if enabled
   updated.transformY = updated.io.snap
     ? _snap(updated.transformY, updated.item.height || 0)
     : updated.transformY
-
-  // Reset horizontal position
   updated.transformX = 0
-
-  // Handle boundaries
-  updated.transformY = Math.min(
-    0,
-    Math.max(updated.transformY, updated.endOfSlidePosition)
-  )
-  updated.endOfSlide = edgeOf(updated.transformY, updated.endOfSlidePosition)
-
+  updated.transformY = Math.min(0, Math.max(updated.transformY, updated.endOfSlidePosition))
+  updated.endOfSlide =
+    updated.transformY >= 0 ? 1 : updated.transformY <= updated.endOfSlidePosition ? -1 : 0
   return updated
 }

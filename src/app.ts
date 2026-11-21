@@ -14,209 +14,307 @@
 */
 
 import {Cyre, cyre, useLog, LogLevel, log} from 'cyre'
+import type {CyreControl} from 'cyre'
 import {useMetrics} from 'cyre/metrics'
 import {holoStore} from './core/state'
-import holoCreateElement from './components/holo-create-element'
+import holoCreateElement, {releasePageListeners} from './components/holo-create-element'
 import holoInitiate from './components/holo-initiate'
 import Touch from './components/holo-touch'
-import {HoloChange, HoloIOOptions} from './types/interface'
-import {CSS_CLASSES, EVENTS} from './config/holo-config'
 import {
   CyreNode,
-  initializeGlobalEvents,
-  setHold
-} from './core/event-manager'
-import {changeOf, goTo} from './components/holo-essentials'
+  HoloChange,
+  HoloIOOptions,
+  HoloOptions
+} from './types/interface'
+import {CSS_CLASSES, EVENTS, HOLO_BRANCH} from './config/holo-config'
+import {initializeHolo, setHold, setLoading} from './core/event-manager'
+import {reconfigure} from './components/holo-io-manager'
+import {changeOf, normalizeOptions} from './components/holo-essentials'
+import {link as linkCarousels, LinkMode} from './components/holo-features'
 
-export const HOLO_VERSION = '3.0.0'
+export const HOLO_VERSION = '3.3.0'
 
-// Set by the UMD build (vite.config.ts / scripts): that bundle carries
-// its own copy of Cyre, so it starts it. The ES and CJS builds share the
-// app's Cyre and never take ownership of it.
+// Set by the UMD build: that bundle carries its own copy of Cyre, so it
+// starts it. The ES and CJS builds share the app's Cyre.
 declare const __HOLO_STANDALONE__: boolean | undefined
-const standalone =
-  typeof __HOLO_STANDALONE__ !== 'undefined' && __HOLO_STANDALONE__
-if (standalone) Cyre.init()
+const standalone = typeof __HOLO_STANDALONE__ !== 'undefined' && __HOLO_STANDALONE__
+const standaloneControl: CyreControl | null = standalone ? Cyre.init().control || null : null
+
+// --- handles -------------------------------------------------------------
+// Handles are thin: every call reads the store by path, so a handle never
+// goes stale and holds no state of its own.
+
+export interface CarouselHandle<T = any> {
+  readonly id: string
+  readonly path: string
+  readonly element: HTMLElement | null
+  next: () => void
+  prev: () => void
+  first: () => void
+  last: () => void
+  goTo: (index: number, animate?: boolean) => void
+  /** where it is: index, page, pages, count, slots, ends */
+  state: () => HoloChange | undefined
+  pause: () => void
+  play: () => void
+  /** subscribe to one of its channels: 'change', 'next-slide', ... */
+  on: (event: string, handler: (payload: any) => unknown) => (() => unknown) | undefined
+  /** data mode: replace, add, remove items */
+  set: (items: T[]) => void
+  append: (items: T[]) => void
+  remove: (keyOrIndex: string | number) => void
+  items: () => T[]
+  /** show skeletons while items are on their way (or put them back) */
+  loading: (on?: boolean, count?: number) => void
+  /** full screen (toggle, or on / off) - for presenting */
+  fullscreen: (on?: boolean) => Promise<void>
+  /** change options (rebuilds in place, keeping its position) */
+  options: (options: Partial<HoloOptions<T>>) => HoloIOOptions | undefined
+  /** a carousel nested in this one (a sub-branch) */
+  create: <C = any>(element: HTMLElement | null, options?: HoloOptions<C>) => CarouselHandle<C> | undefined
+  children: () => CarouselHandle[]
+  refresh: () => void
+  destroy: () => void
+}
+
+export interface HoloHandle {
+  readonly path: string
+  /** the instance's branch */
+  readonly branch: CyreNode
+  /** the Cyre control handle, only when this instance started Cyre */
+  readonly control: CyreControl | null
+  create: <T = any>(element: HTMLElement | null, options?: HoloOptions<T>) => CarouselHandle<T> | undefined
+  /** build carousels from markup (opt-in) */
+  scan: (root?: ParentNode, options?: {selector?: string}) => CarouselHandle[]
+  get: (idOrPath: string) => CarouselHandle | undefined
+  all: () => CarouselHandle[]
+  link: (a: CarouselHandle | string, b: CarouselHandle | string, mode?: LinkMode) => () => unknown
+  refresh: () => void
+  destroy: () => void
+}
+
+export interface UseHoloOptions {
+  /** scan the document (true), an element, or a selector, right away */
+  scan?: boolean | ParentNode | string
+  /** branch name (default holo) */
+  name?: string
+}
+
+const pathOf = (target: CarouselHandle | string): string =>
+  typeof target === 'string' ? holoStore.resolve(target) || target : target.path
+
+const call = (path: string, event: string, payload?: unknown) =>
+  holoStore.getBranch(path)?.call(event, payload)
+
+/** the handle of a carousel path */
+const carouselHandle = (path: string): CarouselHandle => {
+  const instance = holoStore.getInstance(path)
+  const id = instance?.id || path.split('/').pop() || path
+  const dataOf = () => holoStore.getInstance(path)?.data
+
+  const handle: CarouselHandle = {
+    id,
+    path,
+    element: instance?.Dom?.carousel || null,
+    next: () => void call(path, EVENTS.NEXT_SLIDE),
+    prev: () => void call(path, EVENTS.PREV_SLIDE),
+    first: () => void call(path, EVENTS.FIRST_SLIDE),
+    last: () => void call(path, EVENTS.LAST_SLIDE),
+    goTo: (index, animate = true) => void call(path, EVENTS.GO_TO, {index, animate}),
+    state: () => {
+      const virtualDom = holoStore.getVirtualDom(path)
+      return virtualDom && changeOf(virtualDom, path)
+    },
+    pause: () => setHold(path, 'user', true),
+    play: () => setHold(path, 'user', false),
+    on: (event, handler) => holoStore.getBranch(path)?.on(event, handler)?.unsubscribe,
+    set: items => void call(path, EVENTS.ITEMS, items),
+    append: items => void call(path, EVENTS.ITEMS, [...((dataOf()?.items as any[]) || []), ...items]),
+    remove: keyOrIndex => {
+      const data = dataOf()
+      if (!data) return
+      const at =
+        typeof keyOrIndex === 'number' ? keyOrIndex : data.keys.indexOf(String(keyOrIndex))
+      if (at < 0) return
+      call(path, EVENTS.ITEMS, data.items.filter((_, i) => i !== at))
+    },
+    items: () => ((dataOf()?.items as any[]) || []).slice(),
+    loading: (on = true, count) => setLoading(path, on, count),
+    fullscreen: async on => {
+      const element = holoStore.getDom(path)?.carousel
+      if (!element || typeof document === 'undefined') return
+      const active = document.fullscreenElement === element
+      const want = on ?? !active
+      if (want && !active) await element.requestFullscreen?.()
+      else if (!want && active) await document.exitFullscreen?.()
+      element.focus?.()
+    },
+    options: options => reconfigure(path, options),
+    create: (element, options = {}) => {
+      const current = holoStore.getInstance(path)
+      if (!current) return undefined
+      const child = holoCreateElement(element, options, {holo: current.holo, parent: path})
+      return child ? carouselHandle(child) : undefined
+    },
+    children: () => (holoStore.getInstance(path)?.children || []).map(carouselHandle),
+    refresh: () => void call(path, EVENTS.REFRESH_CAROUSEL),
+    destroy: () => {
+      holoStore.removeInstance(path)
+      releasePageListeners()
+    }
+  }
+  return handle
+}
+
+/** the handle of a Holo instance */
+const holoHandle = (path: string): HoloHandle => {
+  const holo = holoStore.getHolo(path)!
+  return {
+    path,
+    branch: holo.root,
+    control: holo.control,
+    create: (element, options = {}) => {
+      const created = holoCreateElement(element, options, {holo: path})
+      return created ? carouselHandle(created) : undefined
+    },
+    scan: (root = document, options = {}) =>
+      holoInitiate(path, root, options.selector).map(carouselHandle),
+    get: idOrPath => {
+      const found = holoStore.resolve(idOrPath) || holoStore.resolve(`${path}/${idOrPath}`)
+      return found ? carouselHandle(found) : undefined
+    },
+    all: () => {
+      const all = holoStore.getAllInstances()
+      return Object.keys(all)
+        .filter(key => all[key].holo === path)
+        .map(carouselHandle)
+    },
+    link: (a, b, mode = 'sync') => linkCarousels(pathOf(a), pathOf(b), mode),
+    refresh: () => void holo.root.call(EVENTS.REFRESH_SCREEN),
+    destroy: () => {
+      const current = holoStore.getHolo(path)
+      if (!current) return
+      for (const top of [...current.carousels]) holoStore.removeInstance(top, false)
+      current.root.destroy()
+      holoStore.removeHolo(path)
+      releasePageListeners()
+    }
+  }
+}
+
+/**
+ * A Holo instance on your Cyre tree.
+ *
+ *   const holo = useHolo(cyre)                    // holo under root
+ *   const holo = useHolo(cyre.branch('ui'))       // ui/holo
+ *   const holo = useHolo()                        // starts Cyre if no app did
+ *   const holo = useHolo(cyre, {scan: true})      // and builds .holo-carousel markup
+ *
+ * Nothing is built until you call create() or scan().
+ */
+export function useHolo(parent?: CyreNode | UseHoloOptions, options: UseHoloOptions = {}): HoloHandle | undefined {
+  const isNode = parent && typeof (parent as CyreNode).branch === 'function'
+  const node = isNode ? (parent as CyreNode) : undefined
+  const settings = isNode ? options : ((parent as UseHoloOptions) || options)
+
+  const state = initializeHolo(node, settings.name || HOLO_BRANCH, standalone)
+  if (!state) return undefined
+  if (standalone && !state.control && standaloneControl && !node) {
+    holoStore.addHolo({...state, control: standaloneControl, owns: true})
+  }
+  const handle = holoHandle(state.path)
+
+  const scan = settings.scan
+  if (scan) {
+    if (typeof scan === 'string') handle.scan(document, {selector: scan})
+    else if (scan === true) handle.scan()
+    else handle.scan(scan)
+  }
+  return handle
+}
+
+// --- the v2 global API (script-tag pages) ------------------------------
+// A wrapper over one default instance. Holo.INIT() scans, as it always did.
 
 export interface HoloInitOptions {
-  /** class the AUTO scan looks for (default holo-carousel) */
+  /** class the scan looks for (default holo-carousel) */
   className?: string
   /** node to put the holo branch under (default: root cyre) */
   cyre?: CyreNode
 }
 
-// Holo Carousel module
 const Holo = (() => {
-  /**
-   * Page-wide setup, once: the holo branch, pointer listeners and the
-   * window resize / load refresh. BUILD runs it too, so INIT is optional.
-   */
-  const ensureSystem = (parent?: CyreNode): boolean => {
-    const system = holoStore.getSystem()
-    if (system.initialized) return true
-
-    const root = initializeGlobalEvents(parent)
-    if (!root) return false
-
-    const refresh = () => root.call(EVENTS.REFRESH_SCREEN)
-    const touchCleanup = Touch.setupGlobalTouchListeners()
-    window.addEventListener('resize', refresh)
-    window.addEventListener('load', refresh)
-
-    holoStore.updateSystem({
-      initialized: true,
-      cleanup: () => {
-        touchCleanup()
-        window.removeEventListener('resize', refresh)
-        window.removeEventListener('load', refresh)
-      }
-    })
-    return true
+  const instance = (parent?: CyreNode): HoloHandle | undefined => {
+    const current = holoStore.getSystem().defaultHolo
+    if (current && holoStore.getHolo(current)) return holoHandle(current)
+    const created = useHolo(parent)
+    if (created) holoStore.updateSystem({defaultHolo: created.path})
+    return created
+  }
+  const byId = (id: string) => {
+    const path = holoStore.resolve(id)
+    return path ? carouselHandle(path) : undefined
+  }
+  const nav = (id: string, run: (handle: CarouselHandle) => void): boolean => {
+    const handle = byId(id)
+    if (handle) run(handle)
+    return !!handle
   }
 
-  const build = (
-    element: HTMLElement,
-    options: Partial<HoloIOOptions> = {}
-  ): string => (ensureSystem() ? holoCreateElement(element, options) : '')
-
-  /**
-   * Update carousel options (rebuilds the carousel in place, keeping
-   * its position)
-   */
-  const _carousel = (
-    id: string,
-    io: Partial<HoloIOOptions> = {}
-  ): {ok: boolean; data: HoloIOOptions} => {
-    const instance = holoStore.getInstance(id)
-    if (!instance) {
-      return {ok: false, data: {} as HoloIOOptions}
-    }
-
-    const current = instance.virtualDom.io
-    const next: Partial<HoloIOOptions> = {...current}
-    for (const attribute in io) {
-      if (attribute in current) {
-        ;(next as any)[attribute] = (io as any)[attribute]
-      } else {
-        log.warn('@Holo: unknown carousel option ' + attribute)
-      }
-    }
-
-    const index = instance.virtualDom.index
-    const element = instance.Dom.carousel
-    const auto = holoStore.isAutoInitialized(id)
-    build(element, next)
-    if (auto) holoStore.markAutoInitialized(id)
-    goTo(id, index, false)
-
-    return {ok: true, data: {...holoStore.getVirtualDom(id)!.io}}
-  }
-
-  /**
-   * Programmatically navigate a carousel - through its own channels, so
-   * Holo.on(id, ...) subscribers see it like a swipe or a key press.
-   */
-  const _navigate = (
-    id: string,
-    direction: 'next' | 'prev' | 'first' | 'last'
-  ): boolean => {
-    const branch = holoStore.getBranch(id)
-    if (!branch) return false
-
-    const eventByDirection = {
-      next: EVENTS.NEXT_SLIDE,
-      prev: EVENTS.PREV_SLIDE,
-      first: EVENTS.FIRST_SLIDE,
-      last: EVENTS.LAST_SLIDE
-    } as const
-
-    branch.call(eventByDirection[direction])
-    return true
-  }
-
-  /**
-   * Subscribe to one carousel's own channel, e.g.
-   * Holo.on('my-carousel', Holo.EVENTS.CHANGE, ({index, page}) => ...)
-   */
-  const _on = (
-    id: string,
-    eventId: string,
-    handler: (...args: any[]) => any
-  ) => holoStore.getBranch(id)?.on(eventId, handler)
-
-  /**
-   * Initialize Holo: page-wide setup plus the AUTO scan
-   */
-  const init = (options: string | HoloInitOptions = {}) => {
-    const {className = CSS_CLASSES.CAROUSEL, cyre: parent} =
-      typeof options === 'string' ? {className: options} : options
-
-    if (holoStore.getSystem().initialized) {
-      log.debug('@Holo: Already initialized')
-      return holoInitiate(className)
-    }
-
-    console.log(
-      `%c HOLO - Initiating holo v${HOLO_VERSION} `,
-      'background: #022d5f; color: white; display: block;'
-    )
-
-    if (!ensureSystem(parent)) return []
-    return holoInitiate(className)
-  }
-
-  // Public API
   return {
     VERSION: HOLO_VERSION,
     TOUCH: Touch,
-    INIT: init,
-    BUILD: build,
-    AUTO: (className = CSS_CLASSES.CAROUSEL) =>
-      ensureSystem() ? holoInitiate(className) : [],
-    carousel: _carousel,
-    refresh: () => holoStore.getSystem().root?.call(EVENTS.REFRESH_SCREEN),
-    dimensions: (id: string) => holoStore.getDimensions(id),
-
-    // Local channel ids every carousel's own branch uses
     EVENTS,
+    use: useHolo,
 
-    // Navigation
-    next: (id: string) => _navigate(id, 'next'),
-    prev: (id: string) => _navigate(id, 'prev'),
-    first: (id: string) => _navigate(id, 'first'),
-    last: (id: string) => _navigate(id, 'last'),
-    goTo: (id: string, index: number, animate = true): boolean => {
-      const branch = holoStore.getBranch(id)
-      if (!branch) return false
-      branch.call(EVENTS.GO_TO, {index, animate})
-      return true
+    INIT: (options: string | HoloInitOptions = {}) => {
+      const {className = CSS_CLASSES.CAROUSEL, cyre: parent} =
+        typeof options === 'string' ? {className: options} : options
+      const holo = instance(parent)
+      if (!holo) return []
+      console.log(`%c HOLO - Initiating holo v${HOLO_VERSION} `, 'background: #022d5f; color: white; display: block;')
+      return holo.scan(document, {selector: `.${className}`}).map(c => c.id)
     },
+    BUILD: (element: HTMLElement, options: Partial<HoloOptions> | Partial<HoloIOOptions> = {}): string =>
+      instance()?.create(element, options as HoloOptions)?.id || '',
+    AUTO: (className = CSS_CLASSES.CAROUSEL) =>
+      (instance()?.scan(document, {selector: `.${className}`}) || []).map(c => c.id),
 
-    /** where a carousel is: index, page, pages, count, slots, ends */
-    state: (id: string): HoloChange | undefined => {
-      const virtualDom = holoStore.getVirtualDom(id)
-      return virtualDom && changeOf(virtualDom)
+    carousel: (id: string, io: Partial<HoloIOOptions> = {}) => {
+      const handle = byId(id)
+      const data = handle?.options(normalizeOptions(io) as any)
+      return {ok: !!data, data: (data || {}) as HoloIOOptions}
     },
-
-    // Auto-play
-    pause: (id: string) => setHold(id, 'user', true),
-    play: (id: string) => setHold(id, 'user', false),
-
-    // Subscribe to a specific carousel's own events
-    on: _on,
-
-    // Tear down a single carousel: its listeners, observers, branch and
-    // every channel on it
-    remove: (id: string) => holoStore.removeInstance(id),
-
-    // Tear down everything Holo set up on the page
+    refresh: () => instance()?.refresh(),
+    dimensions: (id: string) => {
+      const path = holoStore.resolve(id)
+      return path ? holoStore.getDimensions(path) : undefined
+    },
+    next: (id: string) => nav(id, h => h.next()),
+    prev: (id: string) => nav(id, h => h.prev()),
+    first: (id: string) => nav(id, h => h.first()),
+    last: (id: string) => nav(id, h => h.last()),
+    goTo: (id: string, index: number, animate = true) => nav(id, h => h.goTo(index, animate)),
+    state: (id: string) => byId(id)?.state(),
+    pause: (id: string) => nav(id, h => h.pause()),
+    play: (id: string) => nav(id, h => h.play()),
+    on: (id: string, eventId: string, handler: (...args: any[]) => any) => {
+      const path = holoStore.resolve(id)
+      return path ? holoStore.getBranch(path)?.on(eventId, handler) : undefined
+    },
+    link: (a: string, b: string, mode: LinkMode = 'sync') => {
+      const pa = holoStore.resolve(a)
+      const pb = holoStore.resolve(b)
+      return pa && pb ? linkCarousels(pa, pb, mode) : () => false
+    },
+    remove: (id: string) => {
+      const handle = byId(id)
+      handle?.destroy()
+      return !!handle
+    },
     cleanup: () => {
-      const instances = holoStore.getAllInstances()
-      for (const id in instances) holoStore.removeInstance(id)
-      const system = holoStore.getSystem()
-      system.cleanup()
-      system.root?.destroy()
-      holoStore.resetSystem()
+      instance()?.destroy()
+      holoStore.updateSystem({defaultHolo: ''})
     }
   }
 })()
@@ -227,11 +325,11 @@ export default Holo
 // Also expose to window for UMD/browser usage
 if (typeof window !== 'undefined') {
   ;(window as any).Holo = Holo
+  ;(window as any).useHolo = useHolo
 
-  // The standalone bundle's own Cyre, for pages that want its telemetry
-  // (useMetrics, the sensor's log stream). Apps using the ES build import
-  // cyre themselves.
+  // The standalone bundle's own Cyre, for pages that want its telemetry.
+  // Apps using the ES build import cyre themselves.
   if (standalone) {
-    ;(window as any).Cyre = {Cyre, cyre, useLog, useMetrics, LogLevel, log}
+    ;(window as any).Cyre = {Cyre, cyre, control: standaloneControl, useLog, useMetrics, LogLevel, log}
   }
 }

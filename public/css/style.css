@@ -347,6 +347,13 @@ ul {
 
 /* --- Holo 3: gestures, focus, controls -------------------------------- */
 
+/* a carousel never overflows its container (an item wider than it is
+   clipped), and a sideways swipe on it never becomes the browser's back */
+.holo-carousel {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+
 /* the page keeps scrolling across the carousel; Holo takes the other axis */
 .holo-carousel > .holo-container {
   touch-action: pan-y pinch-zoom;
@@ -364,6 +371,7 @@ ul {
 }
 .holo-container img {
   -webkit-user-drag: none;
+  -webkit-touch-callout: none; /* a long press is Holo's, not the image menu's */
   pointer-events: none;
 }
 
@@ -421,6 +429,24 @@ ul {
 .holo-carousel:focus-within .holo-prev,
 .holo-carousel:focus-within .holo-next {
   opacity: 1;
+}
+/* hidden arrows don't catch the pointer */
+.holo-carousel:not(:hover):not(:focus-within) .holo-prev,
+.holo-carousel:not(:hover):not(:focus-within) .holo-next {
+  pointer-events: none;
+}
+/* touch screens have no hover: keep the arrows, smaller */
+@media (hover: none) {
+  .holo-carousel .holo-prev,
+  .holo-carousel .holo-next {
+    opacity: 0.85;
+    pointer-events: auto;
+    width: 36px;
+    height: 36px;
+    margin-top: -18px;
+    font-size: 22px;
+    line-height: 32px;
+  }
 }
 .holo-controls button:disabled {
   opacity: 0 !important;
@@ -526,5 +552,163 @@ ul {
   .holo-controls button,
   .holo-dots .holo-dot {
     transition: none !important;
+  }
+}
+
+/* --- Holo 3.3: loading, entering, presenting --------------------------- */
+
+/* skeletons (items on their way) and slots whose images are loading */
+.holo-carousel .holo-skeleton,
+.holo-carousel .holo-loading {
+  background-color: rgba(255, 255, 255, 0.06);
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  background-size: 250% 100%;
+  animation: holo-shimmer 1.4s linear infinite;
+}
+.holo-carousel[data-placeholder='pulse'] .holo-skeleton,
+.holo-carousel[data-placeholder='pulse'] .holo-loading {
+  background-image: none;
+  animation: holo-pulse 1.2s ease-in-out infinite;
+}
+.holo-carousel[data-placeholder='none'] .holo-skeleton,
+.holo-carousel[data-placeholder='none'] .holo-loading {
+  background-image: none;
+  animation: none;
+}
+/* images wait hidden, then fade in; blur-up shows a blurred low-res src */
+.holo-carousel .holo-loading img {
+  opacity: 0;
+}
+.holo-carousel[data-placeholder='blur'] .holo-loading {
+  background-image: none;
+  animation: none;
+}
+.holo-carousel[data-placeholder='blur'] .holo-loading img[src] {
+  opacity: 1;
+  filter: blur(14px);
+  transform: scale(1.06);
+}
+.holo-carousel .holo-loaded img {
+  animation: holo-image-in 0.45s ease-out;
+}
+.holo-carousel[data-placeholder='blur'] .holo-loaded img {
+  animation: holo-unblur 0.6s ease-out;
+}
+
+/* new items fade up, one after another */
+.holo-carousel .holo-enter {
+  animation: holo-enter 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--holo-stagger, 0) * 70ms);
+}
+
+@keyframes holo-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@keyframes holo-pulse {
+  0%, 100% { background-color: rgba(255, 255, 255, 0.05); }
+  50% { background-color: rgba(255, 255, 255, 0.14); }
+}
+@keyframes holo-image-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes holo-unblur {
+  from { filter: blur(14px); transform: scale(1.06); }
+  to { filter: blur(0); transform: scale(1); }
+}
+@keyframes holo-enter {
+  from { opacity: 0; translate: 0 18px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* switching effects: each item flies to its new place - and the page
+   stays live underneath (a drag during the morph still reaches it) */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(*.holo-item) {
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* the auto-play countdown */
+.holo-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  z-index: 3000;
+  background: rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+}
+.holo-progress > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #3ad7ff;
+  transform-origin: left center;
+  animation: holo-progress var(--holo-progress-duration, 5s) linear both;
+}
+.holo-paused .holo-progress > span {
+  animation-play-state: paused;
+}
+@keyframes holo-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* builds: content in the current slide comes in, in turn */
+.holo-carousel[data-builds] [data-build] {
+  opacity: 0;
+  translate: 0 22px;
+  transition: opacity 0.35s ease, translate 0.35s ease;
+}
+.holo-carousel[data-builds] [data-build='left'] { translate: -32px 0; }
+.holo-carousel[data-builds] [data-build='right'] { translate: 32px 0; }
+.holo-carousel[data-builds] [data-build='zoom'] { translate: none; scale: 0.85; transition-property: opacity, scale; }
+.holo-carousel[data-builds] [data-build='fade'] { translate: none; }
+.holo-carousel[data-builds] .holo-current-slide [data-build] {
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+  transition: opacity 0.6s ease, translate 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), scale 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--build, 0) * 160ms + 250ms);
+}
+
+/* ken burns: the current slide drifts and zooms */
+.holo-carousel .holo-burning img {
+  animation: holo-kenburns var(--holo-progress-duration, 7s) ease-out both;
+}
+@keyframes holo-kenburns {
+  from { transform: scale(var(--holo-kb-from, 1)) translate(0, 0); }
+  to { transform: scale(var(--holo-kb-to, 1.15)) translate(var(--holo-kb-x, 2%), var(--holo-kb-y, 2%)); }
+}
+
+/* presenting full screen */
+.holo-carousel:fullscreen {
+  background: #000;
+  display: flex;
+  align-items: center;
+  max-width: none;
+  width: 100vw !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .holo-carousel .holo-skeleton,
+  .holo-carousel .holo-loading,
+  .holo-carousel .holo-enter,
+  .holo-carousel .holo-loaded img,
+  .holo-carousel .holo-burning img {
+    animation: none;
+  }
+  .holo-carousel[data-builds] [data-build] {
+    transition: none;
   }
 }

@@ -14,6 +14,7 @@ const applyStyle = (id: string, enableTransition: boolean = false): void => {
   }
 
   const {Dom, virtualDom} = instance
+  if (!Dom) return
 
   if (enableTransition) {
     Dom.container.style.transitionDuration = `${virtualDom.duration}ms`

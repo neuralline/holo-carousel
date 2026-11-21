@@ -1,60 +1,196 @@
 //src/types/interface.ts
 
-import type {CyreBranch} from 'cyre'
+import type {CyreBranch, CyreControl, CyrePublic} from 'cyre'
 
-// A carousel's (or accordion's) own Cyre v5 branch: holo/<id> or
-// accordion/<id>. Every channel the instance owns lives on it, so two
-// instances can use the same local ids without colliding.
+// A Holo instance's branch (holo), a carousel's (holo/<id>, nested
+// holo/<id>/<child>) or an accordion's. Every channel a carousel owns
+// lives on its own branch, so carousels never collide.
 export type HoloBranch = CyreBranch
 
-// Core carousel state interfaces
+/** a node Holo can hang its branch under: root cyre or one of the app's branches */
+export type CyreNode = CyrePublic | CyreBranch
+
+export type HoloEffect =
+  | 'slide'
+  | 'center'
+  | 'fade'
+  | 'ring'
+  | 'coverflow'
+  | 'album'
+  | 'shuffle'
+  | 'flip'
+  | 'cube'
+  | 'zoom'
+  | 'cover'
+  | 'reveal'
+  | 'wipe'
+  | 'iris'
+  | 'kenburns'
+
+/** fill a slot with one item; called again when the item changes */
+export type HoloRender<T = any> = (item: T, index: number, slot: HTMLElement) => void
+
+// --- options -----------------------------------------------------------
+
+/** what an app passes to holo.create(...) / data-* attributes */
+export interface HoloOptions<T = any> {
+  /** carousel id (default: the element's id, or holo-<n>) */
+  id?: string
+  enabled?: boolean | number
+  /** mouse wheel / trackpad */
+  wheel?: boolean | number
+  /** prev / next buttons, dots, pause button */
+  controller?: boolean | number
+  drag?: boolean | number
+  swipe?: boolean | number
+  /** land on whole items on release (false = free glide) */
+  snap?: boolean | number
+  /** clicking an item brings it into view */
+  focus?: boolean | number
+  keyboard?: boolean | number
+  /** auto-play: true (every `duration` ms) or an interval in ms */
+  animate?: boolean | number
+  animateDirection?: 1 | -1
+  /** auto-play interval in ms */
+  duration?: number
+  /** false, 'rewind' (jump back at the ends) or 'infinite' (seamless) */
+  loop?: boolean | number | 'rewind' | 'infinite'
+  orientation?: 0 | 1 | 'horizontal' | 'vertical'
+  /** items per next / prev (0 = a page) */
+  step?: number
+  /** items visible at once (0 = as many as fit) */
+  slots?: number
+  /** slide transition in ms */
+  transition?: number
+  effect?: HoloEffect
+  /** options by minimum carousel width: {0: {slots: 1}, 768: {slots: 3}} */
+  breakpoints?: Record<number, Partial<HoloOptions>>
+  /** load data-src images this many pages ahead (0 = off) */
+  lazy?: boolean | number
+  /** keep the position in the URL: #<hash>=<index> */
+  hash?: string
+  /** register channels and listeners only once the carousel is near the screen */
+  defer?: boolean
+
+  /** while images or async items load: 'shimmer' (default), 'pulse', 'blur', 'none' */
+  placeholder?: 'shimmer' | 'pulse' | 'blur' | 'none'
+  /** skeleton slots while items load (default: as many as fit) */
+  placeholders?: number
+  /** a bar counting down to the next auto-play move */
+  progress?: boolean | number
+  /** [data-build] content in the current slide animates in, in turn */
+  builds?: boolean | number
+
+  // data mode
+  /** the items - or a promise of them (placeholders show until it settles) */
+  items?: T[] | Promise<T[]> | (() => Promise<T[]>)
+  render?: HoloRender<T>
+  /** stable key per item, so updates reuse slots */
+  key?: (item: T, index: number) => string | number
+  /** called when a slot is emptied (unmount framework content here) */
+  unrender?: (slot: HTMLElement, item: T) => void
+  /** keep only the visible items (plus `buffer` either side) in the DOM */
+  virtual?: boolean
+  buffer?: number
+  /** a released drag glides on by its speed (default true) */
+  momentum?: boolean | number
+}
+
+/** the normalised options a carousel runs on (numbers, so data-* fit) */
+export interface HoloIOOptions {
+  id: string
+  enabled: number
+  wheel: number
+  controller: number
+  drag: number
+  swipe: number
+  snap: number
+  focus: number
+  keyboard: number
+  animate: number
+  animateDirection: number
+  duration: number
+  /** 0 = off, 1 = rewind, 2 = infinite */
+  loop: number
+  orientation: number
+  step: number
+  slots: number
+  transition: number
+  effect: HoloEffect
+  lazy: number
+  hash: string
+  defer: number
+  virtual: number
+  buffer: number
+  momentum: number
+  placeholder: string
+  placeholders: number
+  progress: number
+  builds: number
+  active: boolean
+  onClick: boolean
+  onDoubleClick: boolean
+}
+
+// --- carousel state ----------------------------------------------------
+
 export interface VirtualDomState {
   id: string
-  carousel: {
-    width?: number
-    height?: number
-  }
-  container: {
-    width?: number
-    height?: number
-  }
+  carousel: {width?: number; height?: number}
+  container: {width?: number; height?: number}
   io: HoloIOOptions
   title: string | null
   description: string | null
-  /** slide transition length in ms (io.transition, 0 with reduced motion) */
+  /** transition in ms (0 with reduced motion) */
   duration: number
   transitionTiming: string
+  /** rendered container offset (slide / center) */
   transformX: number
   transformY: number
   transformZ: number
   /** items visible at once */
   numberOfSlots: number
-  /** 1 = at the start, -1 = at the end, 0 = in between (kept from v2) */
+  /** 1 = at the start, -1 = at the end, 0 = in between */
   endOfSlide: number
-  /** furthest the container can move (negative px) */
+  /** furthest the strip can move (negative px) */
   endOfSlidePosition: number
-  noOfChildren?: number
+  /** item count */
+  noOfChildren: number
   startNumber?: number
-  /** first visible item */
+  /** first visible (or active) item, 0..count-1 */
   index: number
-  /** last index the first visible item can have (count - slots) */
+  /** furthest index without wrapping */
   maxIndex: number
-  /** items moved by one next/prev */
+  /**
+   * continuous position in items. Equals index unless the carousel wraps
+   * (infinite loop, ring, fading loop), where it keeps counting past the
+   * ends so the motion never runs backwards. A drag makes it fractional.
+   */
+  track: number
+  /** the carousel wraps around (track can leave 0..maxIndex) */
+  wrap: boolean
+  /** the track as drawn right now (behind `track` while a move animates) */
+  shown: number
+  /** length of the current move (ms): longer for longer glides */
+  moveDuration: number
+  /**
+   * speed (items/ms) the current move starts at, for moves that continue
+   * a gesture (a released drag, a trackpad swipe); null for commands
+   * (buttons, keys, auto-play), which ease out
+   */
+  launch: number | null
+  /** items moved by one next / prev */
   step: number
   page: number
   pages: number
-  item: {
-    width?: number
-    height?: number
-    min?: number
-    max?: number
-  }
+  /** carousel viewport size along its axis (px) */
+  viewport: number
+  item: {width?: number; height?: number; min?: number; max?: number}
 }
 
 export interface DomState {
   carousel: HTMLElement
   container: HTMLElement
-  /** built by io.controller */
   controls?: {
     root: HTMLElement
     prev: HTMLButtonElement
@@ -62,121 +198,138 @@ export interface DomState {
     dots: HTMLElement
     play?: HTMLButtonElement
   }
-  width?: number
-  height?: number
-  transformX?: number
-  transformY?: number
-  transformZ?: number
 }
 
 export interface TouchState {
   pressed: boolean
-  /** the pointer moved far enough along the carousel's axis to drag */
   dragging: boolean
-  /** the gesture went across the axis: the page scrolls, Holo lets go */
+  /** the gesture went across the axis: the page has it, Holo only watches */
   cancelled: boolean
+  pointerType: string
+  /** a long press fired during this press */
+  longPressed: boolean
+  /** the press caught a move mid-glide (it stopped where it was) */
+  caught: boolean
+  longPressTimer: ReturnType<typeof setTimeout> | 0
+  /** clicks before this time (ms) are swallowed: they end a drag */
+  suppressUntil: number
+  /** the last tap, for double taps */
+  lastTap: {time: number; x: number; y: number}
+  /** a trackpad gesture in progress */
+  wheel: {
+    /** '' none, 'main' moving the carousel, 'cross' the page's, 'done' its tail */
+    axis: '' | 'main' | 'cross'
+    last: number
+    /** movement gathered before deciding whose the gesture is */
+    main: number
+    cross: number
+    timer: ReturnType<typeof setTimeout> | 0
+  }
   pointerId: number
   positionX: number
   positionY: number
   currentX: number
   currentY: number
-  id?: string
-  multiplier: number
-  virtual?: VirtualDomState
-  snapShotWidth?: number
-  snapShotHeight?: number
-  distance?: number
+  /** track when the drag started */
+  startTrack: number
   TouchStartTimeStamp?: number
-  /** recent [time, position] samples, for the release velocity */
+  /** recent [time, track] samples, for the release velocity */
   samples: Array<[number, number]>
-  /** swallow the click that ends a drag */
-  suppressClick: boolean
   targetHoloComponent?: HTMLElement | null
 }
 
-export interface HoloIOOptions {
-  id: string
-  enabled: number
-  /** mouse wheel / trackpad navigation */
-  wheel: number
-  /** build prev/next buttons and dots */
-  controller: number
-  /** mouse drag */
-  drag: number
-  /** touch / pen swipe */
-  swipe: number
-  /** snap to whole items on release (0 = free) */
-  snap: number
-  /** clicking an item brings it into view and marks it active */
-  focus: number
-  /** auto-play (0 = off) */
-  animate: number
-  animateDirection: number
-  /** auto-play interval in ms (0 = 5000) */
-  duration: number
-  /** next on the last item goes back to the first (and prev the other way) */
-  loop: number
-  orientation: number
-  /** items moved per next/prev (0 = a page: every visible item) */
-  step: number
-  /** items visible at once (0 = as many as fit) */
-  slots: number
-  /** slide transition in ms */
-  transition: number
-  /** arrow keys, Home / End when the carousel has focus */
-  keyboard: number
-  active: boolean
-  onClick: boolean
-  onDoubleClick: boolean
+/** items and slots of a carousel built from data */
+export interface DataState {
+  items: unknown[]
+  keys: string[]
+  render: HoloRender
+  key?: (item: any, index: number) => string | number
+  unrender?: (slot: HTMLElement, item: any) => void
+  /** slot element per key (or per track position when virtual) */
+  slots: Record<string, HTMLElement>
+  /** item each slot last rendered */
+  rendered: Record<string, unknown>
+  /** spare slots for the virtual window */
+  pool: HTMLElement[]
+  /** items are on their way: skeleton slots stand in */
+  loading: boolean
 }
 
-/** why auto-play is held: hover, focus, pointer, hidden, offscreen, user */
-export type HoldReason =
-  | 'hover'
-  | 'focus'
-  | 'pointer'
-  | 'hidden'
-  | 'offscreen'
-  | 'user'
+export type HoldReason = 'hover' | 'focus' | 'pointer' | 'hidden' | 'offscreen' | 'user'
 
 export interface CarouselInstance {
+  /** local id (also the element id) */
   id: string
+  /** full branch path, e.g. ui/holo/gallery/thumbs */
+  path: string
+  /** path of the Holo instance it belongs to */
+  holo: string
+  /** path of the carousel it is nested in */
+  parent: string | null
+  children: string[]
   virtualDom: VirtualDomState
-  Dom: DomState
+  /** null for a headless carousel */
+  Dom: DomState | null
   touchState: TouchState
   updateStyle: boolean
   branch: HoloBranch
-  /** auto-play holds; auto-play runs only while this is empty */
   hold: Partial<Record<HoldReason, true>>
-  /** removes this carousel's DOM listeners and observers */
+  /** options as created, before breakpoints */
+  baseIo: HoloIOOptions
+  breakpoints: Array<[number, Partial<HoloIOOptions>]>
+  /** the breakpoint now applied (-1 = none) */
+  breakpoint: number
+  data: DataState | null
+  /** removes the listeners and controls its options asked for */
   cleanup: () => void
-  /** a pending requestAnimationFrame for the drag */
+  /** removes the resize / load observers */
+  unobserve: () => void
+  /** removes links to other carousels */
+  links: Array<() => void>
   frame: number
+  /** a running move animation (stage effects) */
+  tween: {from: number; to: number; start: number; duration: number; frame: number} | null
+  /** channels registered (false while deferred) */
+  loaded: boolean
+  /** a timer that normalises a wrapped track after a move */
+  settleTimer: ReturnType<typeof setTimeout> | 0
 }
 
-/** page-wide Holo state: one per page, shared by every carousel */
+/** one useHolo() */
+export interface HoloInstanceState {
+  path: string
+  root: HoloBranch
+  /** this instance started Cyre (no app did) */
+  owns: boolean
+  control: CyreControl | null
+  /** top-level carousel paths */
+  carousels: string[]
+}
+
+/** page-wide state shared by every Holo instance */
 export interface HoloSystemState {
-  initialized: boolean
-  /** the holo branch every carousel branch sits under */
-  root: HoloBranch | null
   /** the carousel a pointer is pressed on */
-  pressedId: string | null
-  /** ids already built by the AUTO scan */
-  autoInitialized: Record<string, true>
-  /** for ids of carousels without an id attribute */
-  sequence: number
-  /** removes the page-wide listeners */
+  pressedPath: string | null
+  /** carousels using the page-wide listeners */
+  listeners: number
   cleanup: () => void
+  sequence: number
+  /** element id -> carousel path, for the id-based API */
+  ids: Record<string, string>
+  /** the instance the v2 global API (Holo.INIT, ...) uses */
+  defaultHolo: string
 }
 
 export interface HoloState {
   system: HoloSystemState
-  instances: Record<string, CarouselInstance>
+  holos: Record<string, HoloInstanceState>
+  carousels: Record<string, CarouselInstance>
 }
 
 /** what Holo.on(id, 'change', fn) receives */
 export interface HoloChange {
   id: string
+  path: string
   index: number
   page: number
   pages: number
@@ -187,9 +340,6 @@ export interface HoloChange {
 }
 
 // --- Accordion --------------------------------------------------------
-// Mirrors the Holo carousel's own shape one-for-one: a HoloBranch,
-// per-instance options, and a state directory that owns every instance
-// rather than components holding their own local maps.
 
 export interface AccordionIOOptions {
   id: string
@@ -223,38 +373,7 @@ export interface AccordionState {
   instances: Record<string, AccordionInstance>
 }
 
-export interface CyreEvent {
-  id: string
-  payload?: any
-}
-
-export interface TouchEvents {
-  start: string
-  move: string
-  end: string
-  enter: string
-}
-
-export interface StyleOptions {
-  transitionDuration: string
-  transitionTimingFunction: string
-}
-
-export interface SlidePosition {
-  x?: number
-  y?: number
-}
-
 export interface DimensionResult {
-  car: {
-    w: number
-    h: number
-  }
-  con: {
-    w: number
-    h: number
-    x: number
-    y: number
-    z: number
-  }
+  car: {w: number; h: number}
+  con: {w: number; h: number; x: number; y: number; z: number}
 }

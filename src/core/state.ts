@@ -9,7 +9,9 @@ import {
   HoloIOOptions,
   HoloBranch,
   HoloSystemState,
-  HoldReason
+  HoloInstanceState,
+  HoldReason,
+  DataState
 } from '../types/interface'
 import {ANIMATION, DEFAULT_IO_OPTIONS} from '../config/holo-config'
 
@@ -31,60 +33,67 @@ export const createDefaultVirtualDom = (id: string): VirtualDomState => ({
   transformX: 0,
   transformY: 0,
   transformZ: 0,
-  numberOfSlots: 0,
+  numberOfSlots: 1,
   endOfSlide: 1,
   endOfSlidePosition: 0,
+  noOfChildren: 0,
   index: 0,
   maxIndex: 0,
+  track: 0,
+  wrap: false,
+  shown: 0,
+  moveDuration: ANIMATION.DURATION,
+  launch: null,
   step: 1,
   page: 0,
   pages: 1,
-  item: {
-    max: 8
-  }
-})
-
-export const createDefaultDomState = (): DomState => ({
-  carousel: {} as HTMLElement,
-  container: {} as HTMLElement
+  viewport: 0,
+  item: {max: 8}
 })
 
 export const createDefaultTouchState = (): TouchState => ({
   pressed: false,
   dragging: false,
   cancelled: false,
+  pointerType: '',
+  longPressed: false,
+  caught: false,
+  longPressTimer: 0,
+  suppressUntil: 0,
+  lastTap: {time: 0, x: 0, y: 0},
+  wheel: {axis: '', last: 0, main: 0, cross: 0, timer: 0},
   pointerId: -1,
   positionX: 0,
   positionY: 0,
   currentX: 0,
   currentY: 0,
-  multiplier: 1,
-  samples: [],
-  suppressClick: false
+  startTrack: 0,
+  samples: []
 })
 
 const createDefaultSystemState = (): HoloSystemState => ({
-  initialized: false,
-  root: null,
-  pressedId: null,
-  autoInitialized: {},
+  pressedPath: null,
+  listeners: 0,
+  cleanup: () => {},
   sequence: 0,
-  cleanup: () => {}
+  ids: {},
+  defaultHolo: ''
 })
 
-// The one place carousel state lives. Records are updated in place:
-// a drag writes the position up to 120 times a second, and copying the
-// whole instance on every frame was the slowest part of the old store.
-// Readers get the live record - treat it as read-only and write through
-// the update* functions below.
+// The one place Holo state lives: every Holo instance (one per useHolo)
+// and every carousel, keyed by its branch path. Records are updated in
+// place - a drag writes the position up to 120 times a second - so
+// readers get the live record: treat it as read-only and write through
+// the functions below.
 const createHoloStore = () => {
   const state: HoloState = {
     system: createDefaultSystemState(),
-    instances: {}
+    holos: {},
+    carousels: {}
   }
 
-  const instanceOf = (id: string): CarouselInstance | undefined =>
-    state.instances[id]
+  const carouselOf = (path: string): CarouselInstance | undefined =>
+    state.carousels[path]
 
   return {
     // --- page-wide ----------------------------------------------------
@@ -93,47 +102,45 @@ const createHoloStore = () => {
     updateSystem: (updates: Partial<HoloSystemState>): HoloSystemState =>
       Object.assign(state.system, updates),
 
-    /** next id for a carousel without an id attribute */
+    /** next id for a carousel without one */
     nextId: (): string => `holo-${++state.system.sequence}`,
 
-    markAutoInitialized: (id: string): void => {
-      state.system.autoInitialized[id] = true
+    // --- Holo instances ----------------------------------------------
+    addHolo: (holo: HoloInstanceState): HoloInstanceState => {
+      state.holos[holo.path] = holo
+      return holo
     },
 
-    isAutoInitialized: (id: string): boolean =>
-      !!state.system.autoInitialized[id],
+    getHolo: (path: string): HoloInstanceState | undefined => state.holos[path],
 
-    resetSystem: (): void => {
-      state.system = createDefaultSystemState()
+    getAllHolos: (): Record<string, HoloInstanceState> => state.holos,
+
+    removeHolo: (path: string): void => {
+      delete state.holos[path]
     },
 
-    // --- instances ----------------------------------------------------
-    getInstance: instanceOf,
+    // --- carousels ----------------------------------------------------
+    getInstance: carouselOf,
 
-    // Get all carousel instances
-    getAllInstances: (): Record<string, CarouselInstance> => state.instances,
+    getAllInstances: (): Record<string, CarouselInstance> => state.carousels,
 
-    // Get only the virtual DOM state
-    getVirtualDom: (id: string): VirtualDomState | undefined =>
-      instanceOf(id)?.virtualDom,
+    /** a carousel path from a path or an element id */
+    resolve: (idOrPath: string): string | undefined =>
+      state.carousels[idOrPath] ? idOrPath : state.system.ids[idOrPath],
 
-    // Get only the DOM state
-    getDom: (id: string): DomState | undefined => instanceOf(id)?.Dom,
+    getVirtualDom: (path: string): VirtualDomState | undefined =>
+      carouselOf(path)?.virtualDom,
 
-    // Get this carousel's own Cyre branch (holo/<id>)
-    getBranch: (id: string): HoloBranch | undefined => instanceOf(id)?.branch,
+    getDom: (path: string): DomState | null | undefined => carouselOf(path)?.Dom,
 
-    // Get dimensions of a carousel
-    getDimensions: (id: string) => {
-      const instance = instanceOf(id)
+    getBranch: (path: string): HoloBranch | undefined => carouselOf(path)?.branch,
+
+    getDimensions: (path: string) => {
+      const instance = carouselOf(path)
       if (!instance) return undefined
       const {virtualDom} = instance
-
       return {
-        car: {
-          w: virtualDom.carousel.width || 0,
-          h: virtualDom.carousel.height || 0
-        },
+        car: {w: virtualDom.carousel.width || 0, h: virtualDom.carousel.height || 0},
         con: {
           w: virtualDom.container.width || 0,
           h: virtualDom.container.height || 0,
@@ -144,182 +151,185 @@ const createHoloStore = () => {
       }
     },
 
-    // Apply the measured viewport size to the carousel element
-    setDimension: (id: string): void => {
-      const instance = instanceOf(id)
-      if (!instance) return
-      const {virtualDom, Dom} = instance
-
-      if (!virtualDom.io.orientation) {
-        Dom.carousel.style.width = `${virtualDom.carousel.width}px`
-        Dom.carousel.style.height = ''
-      } else {
-        // a vertical container stacks full-width items
-        Dom.carousel.style.height = `${virtualDom.carousel.height}px`
-        Dom.carousel.style.width = ''
-        Dom.container.style.width = '100%'
-      }
-    },
-
-    // Register a new carousel instance
-    registerInstance: (
-      id: string,
-      domElements: {carousel: HTMLElement; container: HTMLElement},
-      options: Partial<HoloIOOptions> = {},
+    registerInstance: (record: {
+      id: string
+      path: string
+      holo: string
+      parent: string | null
+      io: HoloIOOptions
+      breakpoints: Array<[number, Partial<HoloIOOptions>]>
+      Dom: DomState | null
       branch: HoloBranch
-    ): CarouselInstance => {
-      const virtualDom = createDefaultVirtualDom(id)
-      virtualDom.io = {...virtualDom.io, ...options, id}
+      data: DataState | null
+    }): CarouselInstance => {
+      const virtualDom = createDefaultVirtualDom(record.id)
+      virtualDom.io = {...record.io}
 
       const instance: CarouselInstance = {
-        id,
+        id: record.id,
+        path: record.path,
+        holo: record.holo,
+        parent: record.parent,
+        children: [],
         virtualDom,
-        Dom: {
-          carousel: domElements.carousel,
-          container: domElements.container
-        },
+        Dom: record.Dom,
         touchState: createDefaultTouchState(),
         updateStyle: false,
-        branch,
+        branch: record.branch,
         hold: {},
+        baseIo: {...record.io},
+        breakpoints: record.breakpoints,
+        breakpoint: -1,
+        data: record.data,
         cleanup: () => {},
-        frame: 0
+        unobserve: () => {},
+        links: [],
+        frame: 0,
+        tween: null,
+        loaded: false,
+        settleTimer: 0
       }
 
-      state.instances[id] = instance
+      state.carousels[record.path] = instance
+      state.system.ids[record.id] = record.path
+      if (record.parent) state.carousels[record.parent]?.children.push(record.path)
+      else state.holos[record.holo]?.carousels.push(record.path)
       return instance
     },
 
-    // Update a carousel instance (partial update)
     updateInstance: (
-      id: string,
+      path: string,
       updates: Partial<CarouselInstance>
     ): CarouselInstance | undefined => {
-      const instance = instanceOf(id)
+      const instance = carouselOf(path)
       if (!instance) return undefined
-      const {virtualDom, Dom, touchState, ...rest} = updates
+      const {virtualDom, touchState, ...rest} = updates
       Object.assign(instance, rest)
       if (virtualDom) Object.assign(instance.virtualDom, virtualDom)
-      if (Dom) Object.assign(instance.Dom, Dom)
       if (touchState) Object.assign(instance.touchState, touchState)
       return instance
     },
 
-    // Update only the virtual DOM state (nested objects are merged)
+    /** merge into the model (nested objects merged too) */
     updateVirtualDom: (
-      id: string,
+      path: string,
       updates: Partial<VirtualDomState>
     ): VirtualDomState | undefined => {
-      const instance = instanceOf(id)
+      const instance = carouselOf(path)
       if (!instance) return undefined
       const current = instance.virtualDom
       const {carousel, container, io, item, ...rest} = updates
-
       Object.assign(current, rest)
       if (carousel) Object.assign(current.carousel, carousel)
       if (container) Object.assign(current.container, container)
       if (io) Object.assign(current.io, io)
       if (item) Object.assign(current.item, item)
-
       return current
     },
 
-    // Update DOM state
-    updateDom: (
-      id: string,
-      updates: Partial<DomState>
-    ): DomState | undefined => {
-      const instance = instanceOf(id)
-      if (!instance) return undefined
-      return Object.assign(instance.Dom, updates)
+    updateDom: (path: string, updates: Partial<DomState>): DomState | undefined => {
+      const dom = carouselOf(path)?.Dom
+      return dom ? Object.assign(dom, updates) : undefined
     },
 
-    // Update touch state
     updateTouchState: (
-      id: string,
+      path: string,
       updates: Partial<TouchState>
     ): TouchState | undefined => {
-      const instance = instanceOf(id)
-      if (!instance) return undefined
-      return Object.assign(instance.touchState, updates)
+      const instance = carouselOf(path)
+      return instance ? Object.assign(instance.touchState, updates) : undefined
     },
 
-    resetTouchState: (id: string): void => {
-      const instance = instanceOf(id)
-      if (!instance) return
-      const keep = instance.touchState.targetHoloComponent
-      instance.touchState = {
-        ...createDefaultTouchState(),
-        targetHoloComponent: keep
-      }
+    updateData: (path: string, updates: Partial<DataState>): DataState | undefined => {
+      const data = carouselOf(path)?.data
+      return data ? Object.assign(data, updates) : undefined
     },
 
-    // Whether the next transform animates
-    updateStyle: (id: string, enableTransition: boolean): void => {
-      const instance = instanceOf(id)
+    /** whether the next placement animates */
+    updateStyle: (path: string, enableTransition: boolean): void => {
+      const instance = carouselOf(path)
       if (instance) instance.updateStyle = enableTransition
     },
 
-    setFrame: (id: string, frame: number): void => {
-      const instance = instanceOf(id)
+    setFrame: (path: string, frame: number): void => {
+      const instance = carouselOf(path)
       if (instance) instance.frame = frame
     },
 
+    addLink: (path: string, unlink: () => void): void => {
+      carouselOf(path)?.links.push(unlink)
+    },
+
     // --- auto-play holds ---------------------------------------------
-    hold: (id: string, reason: HoldReason): void => {
-      const instance = instanceOf(id)
+    hold: (path: string, reason: HoldReason): void => {
+      const instance = carouselOf(path)
       if (instance) instance.hold[reason] = true
     },
 
-    release: (id: string, reason: HoldReason): void => {
-      const instance = instanceOf(id)
+    release: (path: string, reason: HoldReason): void => {
+      const instance = carouselOf(path)
       if (instance) delete instance.hold[reason]
     },
 
-    isHeld: (id: string): boolean => {
-      const instance = instanceOf(id)
+    isHeld: (path: string): boolean => {
+      const instance = carouselOf(path)
       if (!instance) return true
       for (const _ in instance.hold) return true
       return false
     },
 
-    // Apply style to DOM element based on state
-    applyDomTransform: (id: string, offset = 0): void => {
-      const instance = instanceOf(id)
-      if (!instance) return
-      const {Dom, virtualDom} = instance
-      const style = Dom.container.style
-
-      if (instance.updateStyle && virtualDom.duration > 0) {
-        style.transitionDuration = virtualDom.duration + 'ms'
-        style.transitionTimingFunction = virtualDom.transitionTiming
-      } else {
-        style.transitionDuration = '0ms'
-        style.transitionTimingFunction = 'linear'
-      }
-
-      const x = virtualDom.io.orientation ? 0 : virtualDom.transformX + offset
-      const y = virtualDom.io.orientation ? virtualDom.transformY + offset : 0
-      style.transform = `translate3d(${x}px, ${y}px, ${virtualDom.transformZ}px)`
-    },
-
-    // Remove a carousel instance (tears down its Cyre branch/channels first)
-    removeInstance: (id: string): boolean => {
-      const instance = instanceOf(id)
+    /**
+     * Forget a carousel and everything nested in it (children first).
+     * Listeners, links and DOM are torn down by the caller's cleanup;
+     * the branch is destroyed once, at the top, which takes the
+     * sub-branches with it.
+     */
+    removeInstance: (path: string, destroyBranch = true): boolean => {
+      const instance = carouselOf(path)
       if (!instance) return false
 
-      if (instance.frame) cancelAnimationFrame(instance.frame)
-      instance.cleanup()
-      instance.branch.destroy()
-      if (state.system.pressedId === id) state.system.pressedId = null
-      delete state.system.autoInitialized[id]
-      delete state.instances[id]
+      for (const child of [...instance.children]) {
+        state.carousels[child] && removeChild(child)
+      }
+      teardown(instance)
+      if (destroyBranch) instance.branch.destroy()
 
+      if (instance.parent) {
+        const parent = state.carousels[instance.parent]
+        if (parent) parent.children = parent.children.filter(p => p !== path)
+      } else {
+        const holo = state.holos[instance.holo]
+        if (holo) holo.carousels = holo.carousels.filter(p => p !== path)
+      }
+      if (state.system.ids[instance.id] === path) delete state.system.ids[instance.id]
+      if (state.system.pressedPath === path) state.system.pressedPath = null
+      delete state.carousels[path]
       return true
     },
 
-    // Check if an instance exists
-    hasInstance: (id: string): boolean => !!state.instances[id]
+    hasInstance: (path: string): boolean => !!state.carousels[path]
+  }
+
+  function teardown(instance: CarouselInstance): void {
+    if (instance.frame) cancelAnimationFrame(instance.frame)
+    if (instance.tween?.frame) cancelAnimationFrame(instance.tween.frame)
+    if (instance.settleTimer) clearTimeout(instance.settleTimer)
+    if (instance.touchState.longPressTimer) clearTimeout(instance.touchState.longPressTimer)
+    if (instance.touchState.wheel.timer) clearTimeout(instance.touchState.wheel.timer)
+    instance.links.forEach(unlink => unlink())
+    instance.links = []
+    instance.cleanup()
+    instance.unobserve()
+  }
+
+  function removeChild(path: string): void {
+    const instance = state.carousels[path]
+    if (!instance) return
+    for (const child of [...instance.children]) removeChild(child)
+    teardown(instance)
+    if (state.system.ids[instance.id] === path) delete state.system.ids[instance.id]
+    if (state.system.pressedPath === path) state.system.pressedPath = null
+    delete state.carousels[path]
   }
 }
 

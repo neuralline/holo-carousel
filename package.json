@@ -1,6 +1,6 @@
 {
   "name": "holo-carousel",
-  "version": "3.0.0",
+  "version": "3.3.0",
   "description": "Reactive carousel",
   "main": "dist/cjs/index.cjs",
   "module": "dist/es/index.js",

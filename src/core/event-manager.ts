@@ -1,11 +1,9 @@
 //src/core/event-manager.ts
 
 import {Cyre, cyre, log} from 'cyre'
-import type {CyrePublic} from 'cyre'
 import {EVENTS, GESTURE, HOLO_BRANCH} from '../config/holo-config'
-import {HoloBranch} from '../types/interface'
+import {CyreNode, HoloBranch, HoldReason, HoloInstanceState} from '../types/interface'
 import {holoStore} from './state'
-import {_place} from '../components/orientation-handler'
 import {
   animate,
   animateSlideBackward,
@@ -14,178 +12,111 @@ import {
   lastSlide,
   nxtSlide,
   prvSlide,
-  activate,
+  reveal,
   wheeler,
   goTo,
-  snap,
-  settle,
-  shake,
-  renderState,
-  changeOf,
-  pagesOf,
-  _getItemWidthHeight,
-  _numberOfSlots
+  keysOf,
+  setTrack,
+  snap
 } from '../components/holo-essentials'
+import {measureCarousel, nudgeCarousel, placeCarousel, renderItems} from '../components/holo-render'
+import {refreshLayout} from '../components/holo-io-manager'
 
-/** a node Holo can hang its branch under: root cyre or a host's branch */
-export type CyreNode = CyrePublic | HoloBranch
+export type {CyreNode}
 
 /**
  * Create a named branch and register its first channels. Cyre belongs
- * to the app: the app calls Cyre.init() and keeps `control`, and Holo
- * only adds a branch. If nothing started Cyre (a page that only loads
- * Holo), Holo starts it so it still works, and says so.
+ * to the app: the app calls Cyre.init() and keeps `control`; Holo only
+ * adds a branch. With no parent and nothing started yet, Holo starts
+ * Cyre itself (and says so) - `owns` tells the caller.
  */
 export const attachBranch = (
   name: string,
   register: (branch: HoloBranch) => boolean,
-  parent?: CyreNode
-): HoloBranch | null => {
+  parent?: CyreNode,
+  quiet = false
+): {branch: HoloBranch | null; owns: boolean; control: ReturnType<typeof Cyre.init>['control'] | null} => {
   const attempt = (): HoloBranch | null => {
     const branch = (parent || cyre).branch(name)
     return branch && register(branch) ? branch : null
   }
 
   const branch = attempt()
-  if (branch || parent) return branch
+  if (branch || parent) return {branch, owns: false, control: null}
 
-  log.warn(
-    `@${name}: Cyre was not initialized - starting it. Call Cyre.init() in your app first to keep control of it.`
-  )
-  Cyre.init()
-  return attempt()
+  if (!quiet) {
+    log.warn(
+      `@${name}: Cyre was not initialized - starting it. Call Cyre.init() in your app first to keep control of it.`
+    )
+  }
+  const started = Cyre.init()
+  return {branch: attempt(), owns: started.ok, control: started.control || null}
 }
 
 /**
- * The holo branch and its one page-wide channel (holo/refresh-screen),
- * which fans out to every carousel's own refresh-carousel channel.
- * Each carousel's own channels sit one level down (holo/<id>/...).
+ * A Holo instance: its branch (holo, under the given node) and the one
+ * channel that re-measures all its carousels.
  */
-export const initializeGlobalEvents = (parent?: CyreNode): HoloBranch | null => {
-  const existing = holoStore.getSystem().root
+export const initializeHolo = (
+  parent?: CyreNode,
+  name = HOLO_BRANCH,
+  quiet = false
+): HoloInstanceState | null => {
+  const base = parent && 'path' in parent ? (parent as HoloBranch).path() : ''
+  const path = base ? `${base}/${name}` : name
+  const existing = holoStore.getHolo(path)
   if (existing) return existing
 
-  const root = attachBranch(
-    HOLO_BRANCH,
-    branch => {
-      const registered = branch.channel({
-        id: EVENTS.REFRESH_SCREEN,
-        debounce: GESTURE.REFRESH_DEBOUNCE * 2
-      })
-      if (!registered.ok) return false
-      branch.on(EVENTS.REFRESH_SCREEN, () => {
-        const instances = holoStore.getAllInstances()
-        for (const id in instances) {
-          instances[id].branch.call(EVENTS.REFRESH_CAROUSEL)
+  const {branch, owns, control} = attachBranch(
+    name,
+    root => {
+      if (!root.channel({id: EVENTS.REFRESH_SCREEN, debounce: GESTURE.REFRESH_DEBOUNCE * 2}).ok) {
+        return false
+      }
+      root.on(EVENTS.REFRESH_SCREEN, () => {
+        const all = holoStore.getAllInstances()
+        for (const key in all) {
+          if (all[key].holo === path && all[key].loaded) {
+            all[key].branch.call(EVENTS.REFRESH_CAROUSEL)
+          }
         }
       })
       return true
     },
-    parent
+    parent,
+    quiet
   )
 
-  if (!root) {
-    log.error('@HOLO: could not create the holo branch (is Cyre locked?)')
+  if (!branch) {
+    log.error(`@HOLO: could not create the ${name} branch (is Cyre locked?)`)
     return null
   }
 
-  holoStore.updateSystem({root})
-  return root
-}
-
-const reducedMotion = (): boolean =>
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-/**
- * Measure one carousel and place it back at its first visible item:
- * item size, how many fit, how far it can move, how many pages.
- */
-export const measureCarousel = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance) {
-    log.error('HOLO: carousel refresh error - unknown id ' + id)
-    return
-  }
-
-  const {Dom, virtualDom} = instance
-  const io = virtualDom.io
-  const vertical = !!io.orientation
-  const items = Dom.container.children
-  const count = items.length
-  const pagesBefore = virtualDom.pages
-
-  // measure from a clean slate
-  Dom.carousel.style.width = ''
-  Dom.carousel.style.height = vertical ? '0px' : ''
-  if (vertical) Dom.container.style.width = '100%'
-
-  const {width, height} = _getItemWidthHeight(items[0] as HTMLElement)
-  const size = vertical ? height : width
-  const parent = Dom.carousel.parentElement
-  const room = parent ? (vertical ? parent.clientHeight : parent.clientWidth) : 0
-
-  const fit =
-    io.slots > 0
-      ? io.slots
-      : vertical && room < size
-        ? Math.min(3, virtualDom.item.max || 3) // parent sizes to its content
-        : _numberOfSlots(room, size, virtualDom.item.max || 0)
-  const slots = Math.max(1, Math.min(fit, count || 1))
-  const maxIndex = Math.max(0, count - slots)
-  const step = io.step > 0 ? Math.min(io.step, Math.max(1, maxIndex)) : slots
-  const length = count * size
-
-  holoStore.updateVirtualDom(id, {
-    item: {width, height},
-    noOfChildren: count,
-    numberOfSlots: slots,
-    maxIndex,
-    step,
-    pages: pagesOf(maxIndex, step),
-    duration: reducedMotion() ? 0 : io.transition,
-    carousel: vertical
-      ? {width: Dom.carousel.clientWidth, height: slots * size}
-      : {width: slots * size, height},
-    container: vertical
-      ? {width: Dom.carousel.clientWidth, height: length}
-      : {width: length, height},
-    endOfSlidePosition: -Math.max(0, length - slots * size)
-  })
-
-  holoStore.setDimension(id)
-
-  // back where it was, without animating the jump
-  holoStore.updateVirtualDom(id, _place(virtualDom, virtualDom.index))
-  holoStore.updateStyle(id, false)
-  holoStore.applyDomTransform(id)
-  renderState(id)
-
-  if (pagesBefore !== virtualDom.pages) {
-    instance.branch.call(EVENTS.CHANGE, changeOf(virtualDom))
-  }
+  return holoStore.addHolo({path: branch.path(), root: branch, owns, control: control || null, carousels: []})
 }
 
 /** auto-play interval for a carousel */
-export const autoplayInterval = (id: string): number => {
-  const io = holoStore.getVirtualDom(id)?.io
+export const autoplayInterval = (path: string): number => {
+  const io = holoStore.getVirtualDom(path)?.io
   if (!io) return 0
   // v2 pages passed animate: 1 and the interval in duration; a number
   // above 1 in animate is the interval itself
   return io.animate > 1 ? io.animate : io.duration || 5000
 }
 
-/**
- * Register one carousel's own channels on its own branch (holo/<id>).
- * Navigation always ends in go-to, so `change` fires the same way for a
- * swipe, a button, a key, the wheel or auto-play.
- */
-export const initializeCarouselChannels = (id: string): void => {
-  const branch = holoStore.getBranch(id)
-  if (!branch) return
+type GoToPayload = number | {index?: number; track?: number; animate?: boolean; speed?: number}
 
-  branch.channel([
+/**
+ * Register one carousel's channels on its own branch. Every navigation
+ * ends in go-to, so `change` fires the same way for a swipe, a button,
+ * a key, the wheel, a link or auto-play.
+ */
+export const initializeCarouselChannels = (path: string): boolean => {
+  const instance = holoStore.getInstance(path)
+  if (!instance) return false
+  const {branch} = instance
+
+  const registered = branch.channel([
     {id: EVENTS.REFRESH_CAROUSEL, debounce: GESTURE.REFRESH_DEBOUNCE},
     {id: EVENTS.GO_TO},
     {id: EVENTS.SNAP},
@@ -199,63 +130,144 @@ export const initializeCarouselChannels = (id: string): void => {
     {id: EVENTS.WHEELER, throttle: GESTURE.WHEEL_THROTTLE},
     {id: EVENTS.SHAKE},
     {id: EVENTS.SETTLE, delay: 160},
+    {id: EVENTS.ITEMS},
     {id: EVENTS.CHANGE},
-    {id: EVENTS.ANIMATE, interval: autoplayInterval(id), repeat: true}
+    {id: EVENTS.TAP},
+    {id: EVENTS.DOUBLE_TAP},
+    {id: EVENTS.LONG_PRESS},
+    {id: EVENTS.SWIPE},
+    {id: EVENTS.ANIMATE, interval: autoplayInterval(path), repeat: true}
   ])
+  if (!registered.ok) return false
 
-  branch.on(EVENTS.REFRESH_CAROUSEL, () => measureCarousel(id))
-  branch.on(
-    EVENTS.GO_TO,
-    (payload: {index: number; animate?: boolean} | number) =>
-      typeof payload === 'number'
-        ? goTo(id, payload)
-        : goTo(id, payload?.index ?? 0, payload?.animate !== false)
-  )
-  branch.on(EVENTS.SNAP, () => snap(id))
-  branch.on(EVENTS.NEXT_SLIDE, (payload?: {loop?: boolean}) =>
-    nxtSlide(id, payload?.loop)
-  )
-  branch.on(EVENTS.PREV_SLIDE, (payload?: {loop?: boolean}) =>
-    prvSlide(id, payload?.loop)
-  )
-  branch.on(EVENTS.FIRST_SLIDE, () => firstSlide(id))
-  branch.on(EVENTS.LAST_SLIDE, () => lastSlide(id))
-  branch.on(EVENTS.ANIMATE_FORWARD, () => animateSlideForward(id))
-  branch.on(EVENTS.ANIMATE_BACKWARD, () => animateSlideBackward(id))
-  branch.on(EVENTS.ANIMATE, () => animate(id))
-  branch.on(EVENTS.ACTIVATE, (payload: HTMLElement | [HTMLElement, unknown]) =>
-    activate(id, Array.isArray(payload) ? payload[0] : payload)
-  )
-  branch.on(EVENTS.WHEELER, ({delta}: {delta: number}) => wheeler(id, delta))
+  branch.on(EVENTS.REFRESH_CAROUSEL, () => refreshLayout(path))
+  branch.on(EVENTS.GO_TO, (payload: GoToPayload) => {
+    if (typeof payload === 'number') return goTo(path, payload)
+    const animate = payload?.animate !== false
+    const speed = typeof payload?.speed === 'number' ? payload.speed : null
+    if (typeof payload?.track === 'number') return setTrack(path, payload.track, animate, speed)
+    return goTo(path, payload?.index ?? 0, animate, speed)
+  })
+  branch.on(EVENTS.SNAP, () => snap(path))
+  branch.on(EVENTS.NEXT_SLIDE, (payload?: {loop?: boolean}) => nxtSlide(path, payload?.loop))
+  branch.on(EVENTS.PREV_SLIDE, (payload?: {loop?: boolean}) => prvSlide(path, payload?.loop))
+  branch.on(EVENTS.FIRST_SLIDE, () => firstSlide(path))
+  branch.on(EVENTS.LAST_SLIDE, () => lastSlide(path))
+  branch.on(EVENTS.ANIMATE_FORWARD, () => animateSlideForward(path))
+  branch.on(EVENTS.ANIMATE_BACKWARD, () => animateSlideBackward(path))
+  branch.on(EVENTS.ANIMATE, () => animate(path))
+  branch.on(EVENTS.ACTIVATE, (payload: HTMLElement | number | [HTMLElement, unknown]) => {
+    const target = Array.isArray(payload) ? payload[0] : payload
+    activate(path, target)
+  })
+  branch.on(EVENTS.WHEELER, ({delta}: {delta: number}) => wheeler(path, delta))
   branch.on(EVENTS.SHAKE, (payload: {direction?: 1 | -1} = {}) =>
-    shake(id, payload?.direction === -1 ? -1 : 1)
+    shake(path, payload?.direction === -1 ? -1 : 1)
   )
-  branch.on(EVENTS.SETTLE, () => settle(id))
-  // change has no work of its own; hosts subscribe with Holo.on(id, 'change')
-  branch.on(EVENTS.CHANGE, () => undefined)
+  branch.on(EVENTS.SETTLE, () => {
+    const current = holoStore.getInstance(path)
+    if (!current) return
+    holoStore.updateStyle(path, true)
+    current.virtualDom.moveDuration = current.virtualDom.duration
+    placeCarousel(path)
+  })
+  branch.on(EVENTS.ITEMS, (items: unknown[]) => setItems(path, items))
+  // change and the gestures have no work of their own; apps subscribe
+  // with carousel.on('change' | 'tap' | 'double-tap' | 'long-press' | 'swipe')
+  for (const id of [EVENTS.CHANGE, EVENTS.TAP, EVENTS.DOUBLE_TAP, EVENTS.LONG_PRESS, EVENTS.SWIPE]) {
+    branch.on(id, () => undefined)
+  }
+
+  holoStore.updateInstance(path, {loaded: true})
+  return true
+}
+
+/** the nudge at an end with nothing further to show */
+const shake = (path: string, direction: 1 | -1): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.Dom || instance.virtualDom.duration === 0) return
+  nudgeCarousel(path, direction, GESTURE.SHAKE)
+}
+
+/** mark an item current and bring it into view */
+const activate = (path: string, target: HTMLElement | number): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance) return
+  if (typeof target === 'number') {
+    reveal(path, target)
+    return
+  }
+  if (!instance.Dom) return
+  const slot = target
+  const index =
+    slot.dataset.index !== undefined
+      ? Number(slot.dataset.index)
+      : Array.prototype.indexOf.call(instance.Dom.container.children, slot)
+  if (index < 0) return
+  instance.touchState.targetHoloComponent?.classList.remove('active')
+  slot.classList.add('active')
+  holoStore.updateTouchState(path, {targetHoloComponent: slot})
+  reveal(path, index)
+}
+
+/** replace a data carousel's items (the items channel) */
+export const setItems = (path: string, items: unknown[]): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.data) {
+    log.error(`@HOLO: ${path} was not created from data - items need items/render options`)
+    return
+  }
+  const list = Array.isArray(items) ? items.slice() : []
+  holoStore.updateData(path, {items: list, keys: keysOf(list, instance.data.key), loading: false})
+  instance.Dom?.carousel.removeAttribute('aria-busy')
+  if (instance.Dom) {
+    renderItems(path)
+    measureCarousel(path)
+  } else {
+    measureCarousel(path)
+  }
+}
+
+/**
+ * Show skeletons while items are on their way (data carousels), or put
+ * the items back. `count` skeletons (default: as many as fit).
+ */
+export const setLoading = (path: string, on: boolean, count?: number): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance?.data) {
+    log.error(`@HOLO: ${path} is not a data carousel - loading() needs items/render`)
+    return
+  }
+  if (typeof count === 'number') holoStore.updateVirtualDom(path, {io: {placeholders: count} as any})
+  holoStore.updateData(path, {loading: on})
+  instance.Dom?.carousel.toggleAttribute('aria-busy', on)
+  if (instance.Dom) renderItems(path)
+  measureCarousel(path)
 }
 
 /** start (or restart from now) a carousel's auto-play */
-export const startAutoplay = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance || !instance.virtualDom.io.animate) return
+export const startAutoplay = (path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance || !instance.virtualDom.io.animate || !instance.loaded) return
   instance.branch.call(EVENTS.ANIMATE)
 }
 
-/** hold or release auto-play for one reason; it runs while nothing holds it */
-export const setHold = (
-  id: string,
-  reason: Parameters<typeof holoStore.hold>[1],
-  on: boolean
-): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance || !instance.virtualDom.io.animate) return
-  const wasHeld = holoStore.isHeld(id)
-  if (on) holoStore.hold(id, reason)
-  else holoStore.release(id, reason)
-  const held = holoStore.isHeld(id)
+/** stop auto-play (the timer, not the holds) */
+export const stopAutoplay = (path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (instance?.loaded) instance.branch.pause(EVENTS.ANIMATE)
+}
 
-  const play = instance.Dom.controls?.play
+/** hold or release auto-play for one reason; it runs while nothing holds it */
+export const setHold = (path: string, reason: HoldReason, on: boolean): void => {
+  const instance = holoStore.getInstance(path)
+  if (!instance || !instance.virtualDom.io.animate) return
+  const wasHeld = holoStore.isHeld(path)
+  if (on) holoStore.hold(path, reason)
+  else holoStore.release(path, reason)
+  const held = holoStore.isHeld(path)
+
+  const play = instance.Dom?.controls?.play
   if (play && reason === 'user') {
     play.setAttribute('aria-pressed', String(on))
     play.setAttribute('aria-label', on ? 'Play' : 'Pause')
@@ -263,22 +275,18 @@ export const setHold = (
   }
   if (held === wasHeld) return
 
-  if (held) instance.branch.pause(EVENTS.ANIMATE)
+  if (held) stopAutoplay(path)
   else {
     instance.branch.resume(EVENTS.ANIMATE)
-    startAutoplay(id) // a full interval after the hold ends
+    startAutoplay(path) // a full interval after the hold ends
   }
-  instance.Dom.carousel.classList.toggle('holo-paused', held)
+  instance.Dom?.carousel.classList.toggle('holo-paused', held)
 }
 
 /**
  * Trigger a refresh for a specific carousel
  */
-export const refreshCarousel = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance) {
-    log.error('Holo carousel refresh error: unknown id ' + id)
-    return
-  }
-  instance.branch.call(EVENTS.REFRESH_CAROUSEL)
+export const refreshCarousel = (path: string): void => {
+  const instance = holoStore.getInstance(path)
+  if (instance?.loaded) instance.branch.call(EVENTS.REFRESH_CAROUSEL)
 }

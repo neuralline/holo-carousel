@@ -36,9 +36,22 @@ export const EVENTS = {
   ACTIVATE: 'activate',
   WHEELER: 'wheeler',
 
+  // Gestures (emitted; subscribe with carousel.on('swipe', fn) ...)
+  TAP: 'tap',
+  DOUBLE_TAP: 'double-tap',
+  LONG_PRESS: 'long-press',
+  SWIPE: 'swipe',
+
+  // Data mode: the item list (call it from anywhere to replace the items)
+  ITEMS: 'items',
+
   // Emitted after the visible items change: Holo.on(id, 'change', fn)
   CHANGE: 'change'
 } as const
+
+// The class every carousel element carries once built, and the attribute
+// with its branch path (how nested carousels find their nearest one)
+export const PATH_ATTRIBUTE = 'data-holo-path'
 
 // Default animation settings
 export const ANIMATION = {
@@ -50,8 +63,35 @@ export const ANIMATION = {
 
 // Gesture tuning
 export const GESTURE = {
-  /** px the pointer moves before Holo decides drag vs page scroll */
+  /** px a pointer moves before Holo decides what the gesture is */
   SLOP: 6,
+  SLOP_MOUSE: 4,
+  SLOP_TOUCH: 10,
+  /** within this angle of the carousel's axis (deg) a move is a drag */
+  AXIS_LOCK: 35,
+  /** beyond this angle (deg) it is a move across: the page scrolls */
+  AXIS_CROSS: 55,
+  /** ms a still press takes to become a long press */
+  LONG_PRESS: 500,
+  /** ms and px between two taps that make a double tap */
+  DOUBLE_TAP: 300,
+  DOUBLE_TAP_DISTANCE: 30,
+  /** a move this long (px) on release is reported as a swipe */
+  SWIPE_MIN: 30,
+  /** ms after a drag or long press during which clicks are swallowed */
+  CLICK_GUARD: 400,
+  /** ms without wheel events that ends a trackpad gesture */
+  WHEEL_IDLE: 110,
+  /** px a trackpad gesture moves before Holo decides whose it is */
+  WHEEL_DECIDE: 4,
+  /** a trackpad swipe that moved this far (items) lands on the next item */
+  WHEEL_INTENT: 0.3,
+  /** how fast a released glide slows down (px/ms²) - lower glides further */
+  DECELERATION: 0.0035,
+  /** the furthest one glide goes (items) */
+  MAX_GLIDE: 40,
+  /** longest move animation (ms), for long glides */
+  GLIDE_MAX_DURATION: 1800,
   /** how far past either end a drag can pull, as a share of the distance */
   RESISTANCE: 0.3,
   /** release speed (px/ms) that counts as a flick */
@@ -87,6 +127,17 @@ export const DEFAULT_IO_OPTIONS = {
   slots: 0, // Items visible at once (0 = as many as fit)
   transition: 600, // Slide transition (ms)
   keyboard: 1, // Arrow keys / Home / End when focused
+  effect: 'slide' as const, // slide | center | fade | ring
+  lazy: 1, // load data-src images this many pages ahead
+  hash: '', // keep the position in the URL (#<hash>=<index>)
+  defer: 0, // set up only once near the screen
+  virtual: 0, // keep only the visible items in the DOM (data mode)
+  buffer: 2, // items rendered beyond each side of a virtual window
+  momentum: 1, // 1 = a released drag glides on by its speed; 0 = it stops where it was let go
+  placeholder: 'shimmer', // while images or async items load: shimmer | pulse | blur | none
+  placeholders: 0, // skeleton slots while items load (0 = as many as fit)
+  progress: 0, // a bar counting down to the next auto-play move
+  builds: 0, // [data-build] content in the current slide animates in, in turn
   active: true, // Whether carousel is active
   onClick: true, // Enable click events
   onDoubleClick: false // Enable double-click events
@@ -110,8 +161,70 @@ export const DATA_OPTIONS = [
   'step',
   'slots',
   'transition',
-  'keyboard'
+  'keyboard',
+  'lazy',
+  'defer',
+  'virtual',
+  'buffer',
+  'momentum',
+  'placeholders',
+  'progress',
+  'builds'
 ] as const
+
+// data-* options that are words, not numbers
+export const DATA_WORDS = ['effect', 'hash', 'loop', 'orientation', 'placeholder'] as const
+
+// Options that change which listeners / controls a carousel has; a
+// breakpoint that changes one of them sets the features up again
+export const FEATURE_OPTIONS = [
+  'enabled',
+  'wheel',
+  'controller',
+  'drag',
+  'swipe',
+  'keyboard',
+  'animate',
+  'duration',
+  'effect',
+  'orientation',
+  'virtual',
+  'progress',
+  'builds',
+  'placeholder'
+] as const
+
+// Effects that always wrap: the last item sits next to the first
+export const WRAPPING_EFFECTS = ['ring', 'shuffle']
+
+// Effects whose items are stacked in one place and drawn one by one from
+// the track each frame (Holo tweens the track, so every card can follow
+// its own path - a shuffled card swings out and back under the deck)
+export const STAGE_EFFECTS = [
+  'coverflow',
+  'album',
+  'shuffle',
+  'flip',
+  'cube',
+  'zoom',
+  // presentation transitions
+  'cover',
+  'reveal',
+  'wipe',
+  'iris',
+  'kenburns'
+]
+
+// Effects that show one item in the middle (one step per move)
+export const SINGLE_EFFECTS = ['fade', 'ring', ...STAGE_EFFECTS]
+
+// 3D depth for the stage effects (carousel perspective, px)
+export const PERSPECTIVE: Record<string, number> = {
+  coverflow: 1200,
+  shuffle: 1600,
+  flip: 1000,
+  cube: 1000
+}
 
 // CSS class names (for consistency)
 export const CSS_CLASSES = {
@@ -127,5 +240,15 @@ export const CSS_CLASSES = {
   NEXT: 'holo-next',
   DOTS: 'holo-dots',
   DOT: 'holo-dot',
-  PLAY: 'holo-play'
+  PLAY: 'holo-play',
+  VERTICAL: 'holo-vertical',
+  PAUSED: 'holo-paused',
+  CURRENT: 'holo-current',
+  CURRENT_SLIDE: 'holo-current-slide',
+  SKELETON: 'holo-skeleton',
+  LOADING: 'holo-loading',
+  LOADED: 'holo-loaded',
+  ENTER: 'holo-enter',
+  PROGRESS: 'holo-progress',
+  BURNING: 'holo-burning'
 }

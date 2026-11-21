@@ -1,10 +1,22 @@
 //src/components/holo-essentials.ts
 
 import {log} from 'cyre'
-import {HoloChange, VirtualDomState} from '../types/interface'
+import {
+  HoloChange,
+  HoloIOOptions,
+  HoloOptions,
+  VirtualDomState
+} from '../types/interface'
 import {holoStore} from '../core/state'
-import {CSS_CLASSES, EVENTS, GESTURE} from '../config/holo-config'
-import {_place} from './orientation-handler'
+import {DATA_OPTIONS, DATA_WORDS, EVENTS, GESTURE} from '../config/holo-config'
+import {placeCarousel, syncCarousel, normalizeTrack} from './holo-render'
+
+/*
+  The carousel model: pure maths plus the moves every input ends in.
+  Nothing here reads or writes the DOM - the renderer (holo-render.ts)
+  draws whatever the model says, so a headless carousel (no element)
+  runs the same code.
+*/
 
 // --- pure maths ------------------------------------------------------
 
@@ -29,19 +41,27 @@ export const _swipe = (distance: number, timeElapsed: number): number =>
 export const clampIndex = (index: number, max: number): number =>
   Math.max(0, Math.min(Math.round(index) || 0, Math.max(0, max)))
 
+/** n wrapped into 0..count-1 */
+export const wrapIndex = (n: number, count: number): number =>
+  count > 0 ? ((Math.round(n) % count) + count) % count : 0
+
 /** how many dots: one per step, plus the last position */
-export const pagesOf = (maxIndex: number, step: number): number =>
-  maxIndex <= 0 ? 1 : Math.ceil(maxIndex / Math.max(1, step)) + 1
+export const pagesOf = (maxIndex: number, step: number, wrap = false, count = 0): number =>
+  wrap
+    ? Math.max(1, Math.ceil(count / Math.max(1, step)))
+    : maxIndex <= 0
+      ? 1
+      : Math.ceil(maxIndex / Math.max(1, step)) + 1
 
 /** which dot an index belongs to (the end always lights the last one) */
-export const pageOf = (index: number, maxIndex: number, step: number): number =>
-  index >= maxIndex
+export const pageOf = (index: number, maxIndex: number, step: number, wrap = false): number =>
+  !wrap && index >= maxIndex && maxIndex > 0
     ? pagesOf(maxIndex, step) - 1
     : Math.floor(index / Math.max(1, step))
 
 /** the index a dot goes to */
-export const pageTarget = (page: number, maxIndex: number, step: number): number =>
-  Math.min(page * Math.max(1, step), maxIndex)
+export const pageTarget = (page: number, maxIndex: number, step: number, wrap = false): number =>
+  wrap ? page * Math.max(1, step) : Math.min(page * Math.max(1, step), maxIndex)
 
 /** the item at a position (positions are 0 or negative) */
 export const nearestIndex = (position: number, size: number): number =>
@@ -49,7 +69,7 @@ export const nearestIndex = (position: number, size: number): number =>
 
 /**
  * Past either end a drag keeps moving, but by less the further it goes,
- * so the edge is felt instead of hit.
+ * so the edge is felt instead of hit. Works in px or in items.
  */
 export const rubberBand = (
   position: number,
@@ -61,7 +81,11 @@ export const rubberBand = (
   return position
 }
 
-/** px/ms over the last few samples of [time, position] */
+/** a track kept inside 0..max, stretching past the ends */
+export const rubberTrack = (track: number, max: number): number =>
+  -rubberBand(-track, -max)
+
+/** per ms over the last few samples of [time, value] */
 export const releaseVelocity = (
   samples: Array<[number, number]>,
   now: number,
@@ -75,8 +99,9 @@ export const releaseVelocity = (
 }
 
 /**
- * Where a drag lands. A slow release snaps to the nearest item; a flick
- * carries on (momentum) and always moves at least one item that way.
+ * Where a drag lands, in px (kept for the px-based callers). A slow
+ * release snaps to the nearest item; a flick carries on and always moves
+ * at least one item that way.
  */
 export const releaseIndex = (
   startIndex: number,
@@ -95,8 +120,50 @@ export const releaseIndex = (
 }
 
 /**
- * Where next/prev goes. Returns -1 when there is nowhere to go (an end
- * without loop), so the caller can nudge instead.
+ * The same in items: where a track lands from its release speed
+ * (items/ms). `flick` is the speed that counts as a flick, in items/ms.
+ */
+export const releaseTrack = (
+  startTrack: number,
+  track: number,
+  velocity: number,
+  flick: number
+): number => {
+  let target = Math.round(track + velocity * GESTURE.MOMENTUM)
+  const start = Math.round(startTrack)
+  if (Math.abs(velocity) >= flick && target === start) {
+    target = start + Math.sign(velocity)
+  }
+  return target
+}
+
+/**
+ * How far a released drag glides on (items), decelerating evenly from its
+ * release speed (items/ms): distance = v² / 2a. Pure.
+ */
+export const glideDistance = (
+  velocity: number,
+  size: number,
+  deceleration = GESTURE.DECELERATION,
+  max = GESTURE.MAX_GLIDE
+): number => {
+  if (!size || !velocity) return 0
+  const speed = velocity * size // px/ms
+  const distance = (speed * Math.abs(speed)) / (2 * deceleration) / size
+  return Math.max(-max, Math.min(max, distance))
+}
+
+/** a move's length (ms): the transition for one item, longer for a long glide */
+export const glideDuration = (base: number, items: number): number =>
+  base <= 0
+    ? 0
+    : items <= 1
+      ? base
+      : Math.min(GESTURE.GLIDE_MAX_DURATION, Math.round(base * (0.7 + 0.3 * Math.sqrt(items))))
+
+/**
+ * Where next/prev goes without wrapping. Returns -1 when there is
+ * nowhere to go (an end without loop), so the caller can nudge instead.
  */
 export const stepIndex = (
   index: number,
@@ -114,6 +181,14 @@ export const stepIndex = (
   return Math.max(index - step, 0)
 }
 
+/** the shortest way round from `from` to `to` on a ring of `count` */
+export const shortestDelta = (from: number, to: number, count: number): number => {
+  if (count <= 0) return 0
+  let delta = wrapIndex(to - from, count)
+  if (delta > count / 2) delta -= count
+  return delta
+}
+
 /**
  * Merge options into carousel parameters
  */
@@ -122,29 +197,95 @@ export const ioData = (
   io: Record<string, any> = {}
 ): Record<string, any> => {
   for (const attribute in io) {
-    if (attribute in carouselParameter) {
-      carouselParameter[attribute] = io[attribute]
-    } else {
-      log.warn('unknown carousel Parameter ' + attribute)
-    }
+    if (attribute in carouselParameter) carouselParameter[attribute] = io[attribute]
+    else log.warn('unknown carousel Parameter ' + attribute)
   }
   return carouselParameter
 }
 
-/** data-animate="1" data-duration="4000" ... → options (numbers) */
+const LOOPS: Record<string, number> = {
+  false: 0,
+  true: 1,
+  rewind: 1,
+  infinite: 2
+}
+
+/** app options (booleans, words) → the numbers a carousel runs on */
+export const normalizeOptions = (
+  options: Partial<HoloOptions> | Partial<HoloIOOptions> = {}
+): Partial<HoloIOOptions> => {
+  const io: Record<string, any> = {}
+  for (const name in options) {
+    const value = (options as any)[name]
+    if (value === undefined) continue
+    switch (name) {
+      case 'items':
+      case 'render':
+      case 'key':
+      case 'unrender':
+      case 'breakpoints':
+        break // not runtime options
+      case 'loop':
+        io.loop = typeof value === 'number' ? value : LOOPS[String(value)] ?? 0
+        break
+      case 'orientation':
+        io.orientation = value === 'vertical' || value === 1 || value === true ? 1 : 0
+        break
+      case 'effect':
+      case 'hash':
+      case 'placeholder':
+      case 'id':
+        io[name] = String(value)
+        break
+      case 'active':
+      case 'onClick':
+      case 'onDoubleClick':
+        io[name] = !!value
+        break
+      default:
+        io[name] = typeof value === 'boolean' ? (value ? 1 : 0) : Number(value)
+    }
+  }
+  return io as Partial<HoloIOOptions>
+}
+
+/** data-animate="1" data-effect="ring" ... → options */
 export const readDataOptions = (
   element: HTMLElement,
-  names: readonly string[]
-): Record<string, number> => {
-  const options: Record<string, number> = {}
+  names: readonly string[] = DATA_OPTIONS
+): Partial<HoloOptions> => {
+  const options: Record<string, unknown> = {}
   for (const name of names) {
     const raw = element.dataset[name]
     if (raw === undefined) continue
-    const value =
-      raw === '' || raw === 'true' ? 1 : raw === 'false' ? 0 : Number(raw)
+    const value = raw === '' || raw === 'true' ? 1 : raw === 'false' ? 0 : Number(raw)
     if (!Number.isNaN(value)) options[name] = value
   }
-  return options
+  for (const name of DATA_WORDS) {
+    const raw = element.dataset[name]
+    if (raw === undefined) continue
+    options[name] = /^\d+$/.test(raw) ? Number(raw) : raw
+  }
+  return options as Partial<HoloOptions>
+}
+
+/** breakpoints {768: {...}} → sorted [[768, normalised options]] */
+export const normalizeBreakpoints = (
+  breakpoints: Record<number, Partial<HoloOptions>> | undefined
+): Array<[number, Partial<HoloIOOptions>]> =>
+  Object.entries(breakpoints || {})
+    .map(([width, options]) => [Number(width), normalizeOptions(options)] as [number, Partial<HoloIOOptions>])
+    .filter(([width]) => !Number.isNaN(width))
+    .sort((a, b) => a[0] - b[0])
+
+/** the breakpoint (its min width) for a width, -1 for none */
+export const breakpointFor = (
+  breakpoints: Array<[number, unknown]>,
+  width: number
+): number => {
+  let found = -1
+  for (const [min] of breakpoints) if (width >= min) found = min
+  return found
 }
 
 /**
@@ -154,10 +295,8 @@ export const _getItemWidthHeight = (
   e: HTMLElement | null
 ): {width: number; height: number} => {
   if (!e) return {width: 0, height: 0}
-
   const style = window.getComputedStyle(e, null)
   const px = (value: string) => parseFloat(value) || 0
-
   return {
     width: e.offsetWidth + px(style.marginLeft) + px(style.marginRight),
     height: e.offsetHeight + px(style.marginTop) + px(style.marginBottom)
@@ -167,145 +306,163 @@ export const _getItemWidthHeight = (
 /**
  * Calculate number of slots based on parent width and item width
  */
-export const _numberOfSlots = (
-  parent: number,
-  item: number,
-  max: number
-): number => {
+export const _numberOfSlots = (parent: number, item: number, max: number): number => {
   const slots = item > 0 ? Math.floor(parent / item) : 1
   if (max && slots > max) return max
   return slots || 1
 }
 
 /** what Holo.on(id, 'change') sends */
-export const changeOf = (virtualDom: VirtualDomState): HoloChange => ({
+export const changeOf = (virtualDom: VirtualDomState, path = ''): HoloChange => ({
   id: virtualDom.id,
+  path,
   index: virtualDom.index,
   page: virtualDom.page,
   pages: virtualDom.pages,
   count: virtualDom.noOfChildren || 0,
   slots: virtualDom.numberOfSlots,
-  atStart: virtualDom.index <= 0,
-  atEnd: virtualDom.index >= virtualDom.maxIndex
+  atStart: !virtualDom.wrap && virtualDom.index <= 0,
+  atEnd: !virtualDom.wrap && virtualDom.index >= virtualDom.maxIndex
 })
 
-// --- DOM -------------------------------------------------------------
+/** stands in for an item while the items load */
+export const SKELETON = Object.freeze({holoSkeleton: true})
 
-/**
- * Reflect the position in the DOM: which items are on screen (the rest
- * are hidden from screen readers and taken out of the tab order), the
- * slide labels, and the prev/next buttons and dots.
- */
-export const renderState = (id: string): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance) return
-  const {Dom, virtualDom} = instance
-  const items = Dom.container.children
-  const first = virtualDom.index
-  const last = first + virtualDom.numberOfSlots - 1
-  const count = items.length
+/** what a data carousel shows: its items, or skeletons while they load */
+export const dataList = (
+  data: {items: unknown[]; loading: boolean},
+  fallback: number
+): unknown[] =>
+  data.loading ? Array.from({length: Math.max(1, fallback)}, () => SKELETON) : data.items
 
-  for (let i = 0; i < count; i++) {
-    const item = items[i] as HTMLElement
-    const visible = i >= first && i <= last
-    item.classList.toggle(CSS_CLASSES.VISIBLE, visible)
-    item.setAttribute('aria-label', `${i + 1} of ${count}`)
-    if (visible) {
-      item.removeAttribute('aria-hidden')
-      item.removeAttribute('inert')
-    } else {
-      item.setAttribute('aria-hidden', 'true')
-      item.setAttribute('inert', '')
-    }
-  }
+/** a data carousel's key per item (the index when it has no key function) */
+export const keysOf = (
+  items: unknown[],
+  key?: (item: any, index: number) => string | number
+): string[] =>
+  items.map((item, index) =>
+    item === SKELETON ? `__holo-skeleton-${index}` : String(key ? key(item, index) : index)
+  )
 
-  const controls = Dom.controls
-  if (!controls) return
-  const loop = !!virtualDom.io.loop
-  const scrollable = virtualDom.maxIndex > 0
-  controls.root.hidden = !scrollable
-  controls.prev.disabled = !loop && first <= 0
-  controls.next.disabled = !loop && first >= virtualDom.maxIndex
+// --- the model -------------------------------------------------------
 
-  // dots, or "3 / 18" when there are more pages than dots fit
-  const fit = Math.floor((virtualDom.carousel.width || 0) / 16) - 6
-  const counter = virtualDom.pages > Math.max(3, fit)
-  const mode = counter ? 'count' : 'dots'
-  if (controls.dots.dataset.mode !== mode || (!counter && controls.dots.childElementCount !== virtualDom.pages)) {
-    controls.dots.dataset.mode = mode
-    controls.dots.textContent = ''
-    if (!counter) {
-      for (let page = 0; page < virtualDom.pages; page++) {
-        const dot = document.createElement('button')
-        dot.type = 'button'
-        dot.className = CSS_CLASSES.DOT
-        dot.dataset.page = String(page)
-        dot.setAttribute('aria-label', `Go to page ${page + 1} of ${virtualDom.pages}`)
-        controls.dots.appendChild(dot)
-      }
-    }
-  }
-  if (counter) {
-    controls.dots.textContent = `${virtualDom.page + 1} / ${virtualDom.pages}`
-    return
-  }
-  const dots = controls.dots.children
-  for (let page = 0; page < dots.length; page++) {
-    const on = page === virtualDom.page
-    dots[page].classList.toggle(CSS_CLASSES.ACTIVE, on)
-    if (on) dots[page].setAttribute('aria-current', 'true')
-    else dots[page].removeAttribute('aria-current')
+/** index, page and end flags for a track. Pure. */
+export const placeTrack = (
+  virtualDom: VirtualDomState,
+  track: number
+): Pick<VirtualDomState, 'track' | 'index' | 'page' | 'endOfSlide'> => {
+  const count = virtualDom.noOfChildren
+  const index = virtualDom.wrap
+    ? wrapIndex(track, count)
+    : clampIndex(track, virtualDom.maxIndex)
+  const endOfSlide = virtualDom.wrap
+    ? 0
+    : index <= 0
+      ? 1
+      : index >= virtualDom.maxIndex
+        ? -1
+        : 0
+  return {
+    track: virtualDom.wrap ? track : Math.max(0, Math.min(track, virtualDom.maxIndex)),
+    index,
+    page: pageOf(index, virtualDom.maxIndex, virtualDom.step, virtualDom.wrap),
+    endOfSlide
   }
 }
 
-// --- navigation (channel handlers) ------------------------------------
+/**
+ * Set a carousel's geometry: how many items, how many fit, whether it
+ * wraps. Keeps the current item where it was. Pure.
+ */
+export const geometryOf = (
+  virtualDom: VirtualDomState,
+  count: number,
+  slots: number,
+  wrap: boolean
+): Partial<VirtualDomState> => {
+  const fit = Math.max(1, Math.min(slots, count || 1))
+  const maxIndex = wrap ? Math.max(0, count - 1) : Math.max(0, count - fit)
+  const io = virtualDom.io
+  // a page by default; one item for effects that show one in the middle
+  const page = io.effect === 'slide' ? fit : 1
+  const step = io.step > 0 ? Math.min(io.step, Math.max(1, wrap ? count : maxIndex)) : page
+  return {
+    noOfChildren: count,
+    numberOfSlots: fit,
+    maxIndex,
+    wrap,
+    step,
+    pages: pagesOf(maxIndex, step, wrap, count)
+  }
+}
 
 /**
- * Move to an item index - every navigation ends here. Emits `change`
- * when the first visible item changed.
+ * Move a carousel to a track - every navigation ends here. Draws it
+ * (when it has an element) and emits `change` when the item changed.
  */
-export const goTo = (id: string, target: number, animate = true): boolean => {
-  const virtualDom = holoStore.getVirtualDom(id)
-  if (!virtualDom) return false
+export const setTrack = (
+  path: string,
+  track: number,
+  animate = true,
+  speed: number | null = null
+): boolean => {
+  const instance = holoStore.getInstance(path)
+  if (!instance) return false
+  const virtualDom = instance.virtualDom
   const before = virtualDom.index
 
-  holoStore.updateVirtualDom(id, _place(virtualDom, target))
-  holoStore.updateStyle(id, animate)
-  holoStore.applyDomTransform(id)
-  renderState(id)
+  const travel = Math.abs(track - virtualDom.shown)
+  holoStore.updateVirtualDom(path, placeTrack(virtualDom, track))
+  virtualDom.moveDuration = animate ? glideDuration(virtualDom.duration, travel) : 0
+  virtualDom.launch = animate ? speed : null
+  holoStore.updateStyle(path, animate)
+  placeCarousel(path)
+  syncCarousel(path)
+  if (virtualDom.wrap) normalizeTrack(path, animate ? virtualDom.moveDuration : 0)
 
   if (virtualDom.index !== before) {
-    holoStore.getBranch(id)?.call(EVENTS.CHANGE, changeOf(virtualDom))
+    instance.branch.call(EVENTS.CHANGE, changeOf(virtualDom, path))
   }
   return true
 }
 
-/** the nudge at an end with nothing further to show */
-export const shake = (id: string, direction: 1 | -1): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance || instance.virtualDom.duration === 0) return
-  holoStore.updateStyle(id, true)
-  holoStore.applyDomTransform(id, -direction * GESTURE.SHAKE)
-  instance.branch.call(EVENTS.SETTLE)
+/** go to an item index (the shortest way round when it wraps) */
+export const goTo = (
+  path: string,
+  target: number,
+  animate = true,
+  speed: number | null = null
+): boolean => {
+  const virtualDom = holoStore.getVirtualDom(path)
+  if (!virtualDom) return false
+  if (!virtualDom.wrap) return setTrack(path, clampIndex(target, virtualDom.maxIndex), animate, speed)
+  const base = Math.round(virtualDom.track)
+  const delta = shortestDelta(wrapIndex(base, virtualDom.noOfChildren), target, virtualDom.noOfChildren)
+  return setTrack(path, base + delta, animate, speed)
 }
 
-/** back from a nudge */
-export const settle = (id: string): void => {
-  holoStore.updateStyle(id, true)
-  holoStore.applyDomTransform(id)
-}
-
-/** next / prev: where to, then through go-to (or shake at an end) */
-const advance = (id: string, direction: 1 | -1, loop?: boolean): void => {
-  const instance = holoStore.getInstance(id)
+/**
+ * next / prev by `step`. Wrapping carousels keep counting; others stop
+ * at an end (a nudge) or rewind with loop.
+ */
+export const moveBy = (path: string, direction: 1 | -1, loop?: boolean): void => {
+  const instance = holoStore.getInstance(path)
   if (!instance) return
   const {virtualDom, branch} = instance
+  if (virtualDom.noOfChildren <= 1) return
+
+  if (virtualDom.wrap) {
+    branch.call(EVENTS.GO_TO, {
+      track: Math.round(virtualDom.track) + direction * virtualDom.step
+    })
+    return
+  }
   const target = stepIndex(
     virtualDom.index,
     direction,
     virtualDom.step,
     virtualDom.maxIndex,
-    loop ?? !!virtualDom.io.loop
+    loop ?? virtualDom.io.loop > 0
   )
   if (target < 0) branch.call(EVENTS.SHAKE, {direction})
   else branch.call(EVENTS.GO_TO, {index: target})
@@ -314,52 +471,48 @@ const advance = (id: string, direction: 1 | -1, loop?: boolean): void => {
 /**
  * Previous slide operator
  */
-export const prvSlide = (id: string, loop?: boolean): void =>
-  advance(id, -1, loop)
+export const prvSlide = (path: string, loop?: boolean): void => moveBy(path, -1, loop)
 
 /**
  * Next slide operator
  */
-export const nxtSlide = (id: string, loop?: boolean): void =>
-  advance(id, 1, loop)
+export const nxtSlide = (path: string, loop?: boolean): void => moveBy(path, 1, loop)
 
 /**
  * Jump to first slide operator
  */
-export const firstSlide = (id: string): void => {
-  holoStore.getBranch(id)?.call(EVENTS.GO_TO, {index: 0})
+export const firstSlide = (path: string): void => {
+  holoStore.getBranch(path)?.call(EVENTS.GO_TO, {index: 0})
 }
 
 /**
  * Jump to last slide operator
  */
-export const lastSlide = (id: string): void => {
-  const virtualDom = holoStore.getVirtualDom(id)
-  if (virtualDom) {
-    holoStore.getBranch(id)?.call(EVENTS.GO_TO, {index: virtualDom.maxIndex})
-  }
+export const lastSlide = (path: string): void => {
+  const virtualDom = holoStore.getVirtualDom(path)
+  if (virtualDom) holoStore.getBranch(path)?.call(EVENTS.GO_TO, {index: virtualDom.maxIndex})
 }
 
 /**
- * Animate slides forward (auto-play always wraps around)
+ * Animate slides forward (auto-play always goes round)
  */
-export const animateSlideForward = (id: string): void => {
-  holoStore.getBranch(id)?.call(EVENTS.NEXT_SLIDE, {loop: true})
+export const animateSlideForward = (path: string): void => {
+  holoStore.getBranch(path)?.call(EVENTS.NEXT_SLIDE, {loop: true})
 }
 
 /**
  * Animate slides backward
  */
-export const animateSlideBackward = (id: string): void => {
-  holoStore.getBranch(id)?.call(EVENTS.PREV_SLIDE, {loop: true})
+export const animateSlideBackward = (path: string): void => {
+  holoStore.getBranch(path)?.call(EVENTS.PREV_SLIDE, {loop: true})
 }
 
 /**
  * Auto-play tick
  */
-export const animate = (id: string): void => {
-  if (holoStore.isHeld(id)) return
-  const instance = holoStore.getInstance(id)
+export const animate = (path: string): void => {
+  if (holoStore.isHeld(path)) return
+  const instance = holoStore.getInstance(path)
   if (!instance) return
   instance.branch.call(
     instance.virtualDom.io.animateDirection < 0
@@ -369,44 +522,50 @@ export const animate = (id: string): void => {
 }
 
 /**
- * Snap to the nearest item from wherever the container is
+ * Snap to the nearest item from wherever the track is
  */
-export const snap = (id: string): void => {
-  const virtualDom = holoStore.getVirtualDom(id)
-  if (!virtualDom) return
-  const size =
-    (virtualDom.io.orientation ? virtualDom.item.height : virtualDom.item.width) || 0
-  const position = virtualDom.io.orientation
-    ? virtualDom.transformY
-    : virtualDom.transformX
-  goTo(id, nearestIndex(position, size))
+export const snap = (path: string): void => {
+  const virtualDom = holoStore.getVirtualDom(path)
+  if (virtualDom) setTrack(path, Math.round(virtualDom.track))
 }
 
 /**
- * Mark an item active and bring it into view (the smallest move that
- * shows all of it)
+ * Bring an item into view (the smallest move that shows all of it)
  */
-export const activate = (id: string, element: HTMLElement): void => {
-  const instance = holoStore.getInstance(id)
-  if (!instance) return
-  const {virtualDom, touchState, Dom} = instance
-
-  const position = Array.prototype.indexOf.call(Dom.container.children, element)
-  if (position < 0) return
-
-  touchState.targetHoloComponent?.classList.remove(CSS_CLASSES.ACTIVE)
-  element.classList.add(CSS_CLASSES.ACTIVE)
-  holoStore.updateTouchState(id, {targetHoloComponent: element})
-
+export const reveal = (path: string, position: number, animate = true): void => {
+  const virtualDom = holoStore.getVirtualDom(path)
+  if (!virtualDom || position < 0) return
+  if (virtualDom.wrap) {
+    if (virtualDom.numberOfSlots === 1 || virtualDom.io.effect !== 'slide') {
+      goTo(path, position, animate)
+      return
+    }
+    // on a wrapping strip: is it already among the visible ones?
+    const offset = wrapIndex(position - virtualDom.index, virtualDom.noOfChildren)
+    if (offset < virtualDom.numberOfSlots) return
+    const back = virtualDom.noOfChildren - offset
+    setTrack(
+      path,
+      Math.round(virtualDom.track) +
+        (back <= offset - virtualDom.numberOfSlots + 1 ? -back : offset - virtualDom.numberOfSlots + 1),
+      animate
+    )
+    return
+  }
+  const centred = virtualDom.io.effect !== 'slide'
+  if (centred) {
+    goTo(path, position, animate)
+    return
+  }
   const last = virtualDom.index + virtualDom.numberOfSlots - 1
-  if (position < virtualDom.index) goTo(id, position)
-  else if (position > last) goTo(id, position - virtualDom.numberOfSlots + 1)
+  if (position < virtualDom.index) goTo(path, position, animate)
+  else if (position > last) goTo(path, position - virtualDom.numberOfSlots + 1, animate)
 }
 
 /**
  * Mouse wheel / trackpad: one step per gesture (the channel is throttled)
  */
-export const wheeler = (id: string, delta: number): void => {
-  if (delta < 0) prvSlide(id)
-  else if (delta > 0) nxtSlide(id)
+export const wheeler = (path: string, delta: number): void => {
+  if (delta < 0) prvSlide(path)
+  else if (delta > 0) nxtSlide(path)
 }

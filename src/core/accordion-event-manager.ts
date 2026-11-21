@@ -29,7 +29,7 @@ export const initializeAccordionGlobalEvents = (
   const existing = accordionStore.getRoot()
   if (existing) return existing
 
-  const root = attachBranch(
+  const {branch: root} = attachBranch(
     ACCORDION_BRANCH,
     branch => {
       if (!branch.channel({id: ACCORDION_REFRESH_SCREEN, debounce: 100}).ok) {
