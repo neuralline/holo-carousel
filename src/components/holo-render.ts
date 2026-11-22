@@ -9,18 +9,13 @@
 
 import {holoStore} from '../core/state'
 import {CarouselInstance} from '../types/interface'
-import {
-  CSS_CLASSES,
-  EVENTS,
-  PERSPECTIVE,
-  SINGLE_EFFECTS,
-  STAGE_EFFECTS,
-  WRAPPING_EFFECTS
-} from '../config/holo-config'
+import {log} from 'cyre'
+import {CSS_CLASSES, EVENTS} from '../config/holo-config'
 import {
   _getItemWidthHeight,
   _numberOfSlots,
   SKELETON,
+  pagesOf,
   changeOf,
   dataList,
   geometryOf,
@@ -32,6 +27,8 @@ import {
   axisSize,
   fadeOpacity,
   itemAt,
+  offsetAt,
+  offsetsOf,
   seeded as seededOf,
   ringGeometry,
   stageStyle,
@@ -63,7 +60,18 @@ const reducedMotion = (): boolean =>
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const isStage = (effect: string): boolean => STAGE_EFFECTS.includes(effect)
+/** a registered stage effect (effects.ts) */
+const isStage = (effect: string): boolean => holoStore.hasEffect(effect)
+
+/** effects that show one item in the middle */
+const isSingle = (effect: string): boolean =>
+  effect === 'fade' || effect === 'ring' || isStage(effect)
+
+/** effects that always wrap */
+const alwaysWraps = (effect: string): boolean =>
+  effect === 'ring' || !!holoStore.getEffect(effect)?.wraps
+
+const BUILT_IN = ['slide', 'center', 'fade', 'ring']
 
 const translate = (vertical: boolean, px: number, z = 0): string =>
   vertical ? `translate3d(0, ${px}px, ${z}px)` : `translate3d(${px}px, 0, ${z}px)`
@@ -102,7 +110,7 @@ const clearEffect = (instance: CarouselInstance): void => {
 /** how many skeletons stand in while items load */
 const skeletonCount = (instance: CarouselInstance): number => {
   const io = instance.virtualDom.io
-  return io.placeholders || io.slots || (SINGLE_EFFECTS.includes(io.effect) ? 3 : 6)
+  return io.placeholders || io.slots || (isSingle(io.effect) ? 3 : 6)
 }
 
 /** the items a data carousel shows right now (skeletons while loading) */
@@ -176,25 +184,64 @@ export const renderItems = (path: string): void => {
     return
   }
   const {data} = instance
-  const container = instance.Dom.container
   const list = listOf(instance)
   const keys = keysOf(list, data.key)
+  reconcile(instance.Dom.container, list, keys, data, {
+    make: newSlot,
+    fill: (item, index, slot) => fill(instance, item, index, slot),
+    drop: (slot, item) => {
+      if (item !== SKELETON) data.unrender?.(slot, item)
+    },
+    // items added to a live carousel (or replacing skeletons) fade up
+    added: (slot, item, order) => {
+      if (instance.loaded && item !== SKELETON) enter(slot, order)
+    }
+  })
+  if (!data.loading) holoStore.updateData(path, {keys})
+}
+
+/** what reconcile needs to know about a keyed list's slots */
+export interface KeyedRecord {
+  slots: Record<string, HTMLElement>
+  rendered: Record<string, unknown>
+}
+
+export interface KeyedHooks {
+  make: () => HTMLElement
+  fill: (item: unknown, index: number, slot: HTMLElement) => void
+  drop?: (slot: HTMLElement, item: unknown) => void
+  /** a slot made for a new key (order among this update's arrivals) */
+  added?: (slot: HTMLElement, item: unknown, order: number) => void
+}
+
+/**
+ * The keyed update every list in Holo uses (carousels and list
+ * bindings): one element per key, reused while the key stays, filled
+ * again only when its item changed (by identity), moved into order,
+ * dropped when its key goes. The record lives in the caller's state.
+ */
+export const reconcile = (
+  container: HTMLElement,
+  items: unknown[],
+  keys: string[],
+  record: KeyedRecord,
+  hooks: KeyedHooks
+): void => {
   const keep: Record<string, true> = {}
   let arrivals = 0
 
   keys.forEach((key, index) => {
     keep[key] = true
-    const item = list[index]
-    let slot = data.slots[key]
+    const item = items[index]
+    let slot = record.slots[key]
     if (!slot) {
-      slot = newSlot()
-      data.slots[key] = slot
-      // items added to a live carousel (or replacing skeletons) fade up
-      if (instance.loaded && item !== SKELETON) enter(slot, arrivals++)
+      slot = hooks.make()
+      record.slots[key] = slot
+      hooks.added?.(slot, item, arrivals++)
     }
-    if (data.rendered[key] !== item || !(key in data.rendered)) {
-      fill(instance, item, index, slot)
-      data.rendered[key] = item
+    if (record.rendered[key] !== item || !(key in record.rendered)) {
+      hooks.fill(item, index, slot)
+      record.rendered[key] = item
     }
     slot.dataset.key = key
     slot.dataset.index = String(index)
@@ -203,15 +250,14 @@ export const renderItems = (path: string): void => {
     }
   })
 
-  for (const key in data.slots) {
+  for (const key in record.slots) {
     if (keep[key]) continue
-    const slot = data.slots[key]
-    if (data.rendered[key] !== SKELETON) data.unrender?.(slot, data.rendered[key])
+    const slot = record.slots[key]
+    hooks.drop?.(slot, record.rendered[key])
     slot.remove()
-    delete data.slots[key]
-    delete data.rendered[key]
+    delete record.slots[key]
+    delete record.rendered[key]
   }
-  if (!data.loading) holoStore.updateData(path, {keys})
 }
 
 /**
@@ -305,10 +351,10 @@ export const measureCarousel = (path: string): void => {
 
   if (!Dom) {
     const count = data ? listOf(instance).length : virtualDom.noOfChildren
-    const single = SINGLE_EFFECTS.includes(io.effect)
+    const single = isSingle(io.effect)
     const slots = single ? 1 : io.slots || 1
     const wrap =
-      (WRAPPING_EFFECTS.includes(io.effect) && count > 1) ||
+      (alwaysWraps(io.effect) && count > 1) ||
       (single && io.loop > 0) ||
       (io.loop === 2 && count > slots)
     holoStore.updateVirtualDom(path, geometryOf(virtualDom, count, slots, wrap))
@@ -321,6 +367,10 @@ export const measureCarousel = (path: string): void => {
 
   const {carousel, container} = Dom
   const vertical = !!io.orientation
+  if (!BUILT_IN.includes(io.effect) && !isStage(io.effect)) {
+    log.warn(`@HOLO ${path}: effect "${io.effect}" is not registered (registerEffect from holo-carousel/effects) - sliding instead`)
+    holoStore.updateVirtualDom(path, {io: {effect: 'slide'} as any})
+  }
   const effect = io.effect
 
   clearEffect(instance)
@@ -351,34 +401,67 @@ export const measureCarousel = (path: string): void => {
       : 0
   const count = data ? listOf(instance).length : container.children.length
 
+  // mixed-size items (slide only): position by each item's own size
+  const sizes =
+    effect === 'slide' && !io.virtual && count > 1
+      ? slotsOf(instance).map(slot => {
+          const box = _getItemWidthHeight(slot)
+          return vertical ? box.height : box.width
+        })
+      : []
+  const offsets = sizes.length > 1 && Math.max(...sizes) - Math.min(...sizes) > 1 ? offsetsOf(sizes) : null
+
   let fit =
     io.slots > 0
       ? io.slots
       : vertical && room < size
         ? Math.min(3, virtualDom.item.max || 3) // parent sizes to its content
         : _numberOfSlots(room, size, virtualDom.item.max || 0)
-  const single = SINGLE_EFFECTS.includes(effect)
+  const single = isSingle(effect)
   if (single) fit = 1
   fit = Math.max(1, Math.min(fit, count || 1))
 
   const wrap =
-    (WRAPPING_EFFECTS.includes(effect) && count > 1) ||
-    (single && io.loop > 0) ||
-    (io.loop === 2 && count >= fit + 3)
+    !offsets &&
+    ((alwaysWraps(effect) && count > 1) ||
+      (single && io.loop > 0) ||
+      (io.loop === 2 && count >= fit + 3))
 
-  const viewport =
+  let viewport =
     effect === 'slide' ? fit * size : effect === 'fade' ? size : Math.max(room, size)
   // room for scattered / swinging cards above and below
-  const margin = effect === 'album' || effect === 'shuffle' ? 28 : effect === 'coverflow' ? 12 : 0
+  const margin = holoStore.getEffect(effect)?.margin || 0
+
+  const geometry = geometryOf(virtualDom, count, fit, wrap)
+  let length = count * size
+  let end = -Math.max(0, count - fit) * size
+  let average = size
+  if (offsets) {
+    // the viewport is the room it has; it ends where the last item ends
+    length = offsets[count]
+    viewport = Math.min(length, room || length)
+    end = -Math.max(0, length - viewport)
+    average = length / count
+    const visible = Math.max(1, offsets.filter((start, i) => i < count && offsets[i + 1] <= viewport + 0.5).length)
+    const maxIndex = Math.max(0, offsets.findIndex(start => start >= length - viewport - 0.5))
+    const step = io.step > 0 ? io.step : visible
+    Object.assign(geometry, {
+      numberOfSlots: visible,
+      maxIndex,
+      step,
+      pages: pagesOf(maxIndex, step)
+    })
+  }
 
   holoStore.updateVirtualDom(path, {
-    ...geometryOf(virtualDom, count, fit, wrap),
-    item: {width, height},
+    ...geometry,
+    item: vertical ? {width, height: average} : {width: average, height},
+    offsets,
     viewport,
     duration: reducedMotion() ? 0 : io.transition,
     carousel: vertical ? {width: carousel.clientWidth, height: viewport} : {width: viewport, height},
-    container: vertical ? {width: carousel.clientWidth, height: count * size} : {width: count * size, height},
-    endOfSlidePosition: -Math.max(0, count - fit) * size
+    container: vertical ? {width: carousel.clientWidth, height: length} : {width: length, height},
+    endOfSlidePosition: end
   })
 
   // the viewport
@@ -412,7 +495,8 @@ export const measureCarousel = (path: string): void => {
     }
   } else if (layout === 'stage') {
     // every item in one place; each is drawn from its distance to the track
-    carousel.style.perspective = PERSPECTIVE[effect] ? `${PERSPECTIVE[effect]}px` : ''
+    const depth = holoStore.getEffect(effect)?.perspective
+    carousel.style.perspective = depth ? `${depth}px` : ''
     container.style.display = 'grid'
     container.style.position = 'relative'
     container.style.overflow = 'visible'
@@ -422,7 +506,7 @@ export const measureCarousel = (path: string): void => {
     container.style.marginTop = `${margin}px`
     container.style.marginBottom = `${margin}px`
     if (!vertical) container.style.marginLeft = `${Math.max(0, (room - width) / 2)}px`
-    const flat = effect === 'flip' || effect === 'cube'
+    const flat = !!holoStore.getEffect(effect)?.backface
     for (const slot of slotsOf(instance)) {
       slot.style.gridArea = '1 / 1'
       slot.style.transition = 'none'
@@ -453,14 +537,22 @@ export const measureCarousel = (path: string): void => {
     })
   }
 
-  // back where it was, without animating the jump
   const track = wrap ? virtualDom.track : virtualDom.index
-  holoStore.updateVirtualDom(path, placeTrack(virtualDom, wrap ? track : Math.min(track, virtualDom.maxIndex)))
-  virtualDom.shown = virtualDom.track
-  virtualDom.moveDuration = virtualDom.duration
-  virtualDom.launch = null
-  holoStore.updateStyle(path, false)
-  placeCarousel(path)
+  const moving = instance.tween
+  if (moving && !instance.touchState.dragging && (wrap || moving.to <= virtualDom.maxIndex)) {
+    // re-measured mid-move (images loading as a glide reveals them): the
+    // move carries on to the same item with the new sizes - it is only
+    // redrawn where it is now, never cut short
+    drawAt(instance, virtualDom.shown)
+  } else {
+    // back where it was, without animating the jump
+    holoStore.updateVirtualDom(path, placeTrack(virtualDom, wrap ? track : Math.min(track, virtualDom.maxIndex)))
+    virtualDom.shown = virtualDom.track
+    virtualDom.moveDuration = virtualDom.duration
+    virtualDom.launch = null
+    holoStore.updateStyle(path, false)
+    placeCarousel(path)
+  }
   syncCarousel(path)
 
   if (pagesBefore !== virtualDom.pages || countBefore !== virtualDom.noOfChildren) {
@@ -604,11 +696,18 @@ const animateTo = (
   let length = duration
   let launch: number | null = null
   if (speed !== null) {
-    // continuing a gesture: leave at its speed (from rest if it was still
-    // or heading the other way)
-    const heading = speed && Math.sign(speed) === Math.sign(delta) ? speed : 0
-    if (heading) length = Math.min(duration, Math.max(160, (3 * Math.abs(delta)) / Math.abs(heading)))
-    launch = heading * length
+    // continuing a gesture: the curve only slows down from the moment it
+    // is let go (a Hermite with launch between 1.5 and 3 times the
+    // distance never speeds up and never overshoots). A short settle is
+    // quick; a long glide takes the time its speed needs.
+    const span = Math.abs(delta)
+    const base = instance.virtualDom.duration || duration
+    const cap = Math.min(holoStore.gesture().GLIDE_MAX_DURATION, Math.max(duration, base * Math.max(0.45, Math.sqrt(span))))
+    const heading = speed && Math.sign(speed) === Math.sign(delta) ? Math.abs(speed) : 0
+    length = heading ? Math.min(cap, Math.max(140, (2 * span) / heading)) : Math.min(cap, base * Math.max(0.45, Math.sqrt(span)))
+    if (span < 1) length = Math.min(length, base * Math.max(0.45, Math.sqrt(span)))
+    const leave = Math.max(1.5 * span, Math.min(3 * span, heading * length))
+    launch = Math.sign(delta) * leave
   }
   const tween = {from, to, start: performance.now(), duration: length, frame: 0}
   const step = (now: number) => {
@@ -706,6 +805,12 @@ export const syncCarousel = (path: string): void => {
         : Math.abs(index - virtualDom.index)
       return distance <= reach
     }
+    if (virtualDom.offsets) {
+      // mixed sizes: wholly inside the viewport at the current position
+      const offsets = virtualDom.offsets
+      const start = Math.min(offsetAt(offsets, virtualDom.index), -virtualDom.endOfSlidePosition)
+      return offsets[index] >= start - 0.5 && offsets[index + 1] <= start + virtualDom.viewport + 0.5
+    }
     const offset = virtualDom.wrap
       ? wrapIndex(index - virtualDom.index, count)
       : index - virtualDom.index
@@ -737,9 +842,12 @@ export const syncCarousel = (path: string): void => {
       }
       slot.classList.toggle(CSS_CLASSES.BURNING, current)
     }
-    slot.setAttribute('role', 'group')
-    slot.setAttribute('aria-roledescription', 'slide')
-    slot.setAttribute('aria-label', `${index + 1} of ${count}`)
+    // presets give their items their own roles (tabpanel, step, page)
+    if (!slot.hasAttribute('data-holo-role')) {
+      slot.setAttribute('role', 'group')
+      slot.setAttribute('aria-roledescription', 'slide')
+      slot.setAttribute('aria-label', `${index + 1} of ${count}`)
+    }
     if (visible) {
       slot.removeAttribute('aria-hidden')
       slot.removeAttribute('inert')
@@ -781,7 +889,7 @@ export const syncCarousel = (path: string): void => {
   }
   for (let page = 0; page < dots.children.length; page++) {
     const on = page === virtualDom.page
-    dots.children[page].classList.toggle(CSS_CLASSES.ACTIVE, on)
+    dots.children[page].classList.toggle(CSS_CLASSES.DOT_ACTIVE, on)
     if (on) dots.children[page].setAttribute('aria-current', 'true')
     else dots.children[page].removeAttribute('aria-current')
   }

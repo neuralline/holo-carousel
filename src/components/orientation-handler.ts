@@ -1,6 +1,9 @@
 //src/components/orientation-handler.ts
 
-import {VirtualDomState} from '../types/interface'
+import {StageContext, StageStyle, VirtualDomState} from '../types/interface'
+import {holoStore} from '../core/state'
+
+export type {StageContext, StageStyle}
 import {_snap, rubberBand, wrapIndex} from './holo-essentials'
 
 /*
@@ -19,6 +22,47 @@ export const centreOffset = (virtualDom: VirtualDomState): number =>
     ? Math.max(0, (virtualDom.viewport - axisSize(virtualDom)) / 2)
     : 0
 
+// --- mixed-size items ----------------------------------------------
+
+/** where each item starts (and, last, where the strip ends) */
+export const offsetsOf = (sizes: number[]): number[] => {
+  const offsets = [0]
+  for (const size of sizes) offsets.push(offsets[offsets.length - 1] + size)
+  return offsets
+}
+
+/** px from the strip's start for a (fractional) track; past the ends by the edge items' size */
+export const offsetAt = (offsets: number[], track: number): number => {
+  const n = offsets.length - 1
+  if (n <= 0) return 0
+  if (track <= 0) return track * (offsets[1] - offsets[0])
+  if (track >= n) return offsets[n] + (track - n) * (offsets[n] - offsets[n - 1])
+  const i = Math.floor(track)
+  return offsets[i] + (track - i) * (offsets[i + 1] - offsets[i])
+}
+
+/** the (fractional) track at px from the strip's start */
+export const trackAt = (offsets: number[], px: number): number => {
+  const n = offsets.length - 1
+  if (n <= 0) return 0
+  if (px <= 0) return px / (offsets[1] - offsets[0] || 1)
+  if (px >= offsets[n]) return n + (px - offsets[n]) / (offsets[n] - offsets[n - 1] || 1)
+  let low = 0
+  let high = n - 1
+  while (low < high) {
+    const mid = (low + high + 1) >> 1
+    if (offsets[mid] <= px) low = mid
+    else high = mid - 1
+  }
+  return low + (px - offsets[low]) / (offsets[low + 1] - offsets[low] || 1)
+}
+
+/** a track moved by px (a drag, a trackpad delta), for either kind of item size */
+export const trackMovedBy = (virtualDom: VirtualDomState, track: number, px: number): number =>
+  virtualDom.offsets
+    ? trackAt(virtualDom.offsets, offsetAt(virtualDom.offsets, track) + px)
+    : track + px / (axisSize(virtualDom) || 1)
+
 /**
  * The strip's offset (px) for a track. A strip that does not wrap stops
  * at its ends - with resistance while dragged (`stretch`).
@@ -30,7 +74,7 @@ export const stripPosition = (
 ): number => {
   const size = axisSize(virtualDom)
   const offset = centreOffset(virtualDom)
-  const raw = offset - track * size
+  const raw = offset - (virtualDom.offsets ? offsetAt(virtualDom.offsets, track) : track * size)
   if (virtualDom.wrap) return raw
   if (virtualDom.io.effect === 'center') {
     const end = offset - virtualDom.maxIndex * size
@@ -118,21 +162,6 @@ export const signedDistance = (
   if (!wrap || count <= 0) return index - track
   const d = (((index - track) % count) + count) % count
   return d > count / 2 ? d - count : d
-}
-
-export interface StageStyle {
-  transform: string
-  opacity: number
-  zIndex: number
-  /** wipes and irises reveal by clipping */
-  clipPath?: string
-}
-
-export interface StageContext {
-  /** item width (along the axis) */
-  size: number
-  count: number
-  vertical: boolean
 }
 
 const along = (vertical: boolean, px: number): string =>
@@ -296,33 +325,10 @@ export const stageStyle = (
   wrap: boolean,
   context: StageContext
 ): StageStyle => {
-  const {count} = context
-  if (effect === 'shuffle') return shuffleStyle(index - track, context)
-  const d = signedDistance(index, track, count, wrap)
-  switch (effect) {
-    case 'coverflow':
-      return coverflowStyle(d, context)
-    case 'album':
-      return albumStyle(d, index, context)
-    case 'flip':
-      return flipStyle(d, context)
-    case 'cube':
-      return cubeStyle(d, context)
-    case 'zoom':
-      return zoomStyle(d)
-    case 'cover':
-      return coverStyle(d, context)
-    case 'reveal':
-      return revealStyle(d, context)
-    case 'wipe':
-      return wipeStyle(d, context)
-    case 'iris':
-      return irisStyle(d)
-    case 'kenburns':
-      return kenburnsStyle(d)
-    default:
-      return {transform: '', opacity: d === 0 ? 1 : 0, zIndex: 0}
-  }
+  const d = signedDistance(index, track, context.count, wrap)
+  const definition = holoStore.getEffect(effect)
+  if (definition) return definition.style(d, index, context, index - track)
+  return {transform: '', opacity: d === 0 ? 1 : 0, zIndex: 0}
 }
 
 /**

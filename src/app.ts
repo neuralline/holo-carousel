@@ -31,8 +31,22 @@ import {initializeHolo, setHold, setLoading} from './core/event-manager'
 import {reconfigure} from './components/holo-io-manager'
 import {changeOf, normalizeOptions} from './components/holo-essentials'
 import {link as linkCarousels, LinkMode} from './components/holo-features'
+import {tabs, stepper, pager, TabsOptions, StepperOptions} from './components/holo-presets'
+import {
+  bind,
+  bindAll,
+  bindInput,
+  createState,
+  list,
+  unbindAll,
+  InputOptions,
+  ListOptions,
+  StateHandle
+} from './components/holo-bind'
+import {applyRoute, currentRoute, RouterOptions, startRouter, writeRoute} from './components/holo-router'
+import {tune, GestureTuning} from './components/holo-tune'
 
-export const HOLO_VERSION = '3.3.0'
+export const HOLO_VERSION = '3.4.0'
 
 // Set by the UMD build: that bundle carries its own copy of Cyre, so it
 // starts it. The ES and CJS builds share the app's Cyre.
@@ -63,6 +77,14 @@ export interface CarouselHandle<T = any> {
   set: (items: T[]) => void
   append: (items: T[]) => void
   remove: (keyOrIndex: string | number) => void
+  /** put items in at an index */
+  insert: (index: number, items: T[]) => void
+  /** move an item (by key or index) to an index */
+  move: (keyOrIndex: string | number, to: number) => void
+  /** replace one item (by key or index), or change it with a function */
+  update: (keyOrIndex: string | number, item: T | ((item: T) => T)) => void
+  /** change the list with a function: patch(list => list.filter(...)) */
+  patch: (change: (items: T[]) => T[]) => void
   items: () => T[]
   /** show skeletons while items are on their way (or put them back) */
   loading: (on?: boolean, count?: number) => void
@@ -72,6 +94,9 @@ export interface CarouselHandle<T = any> {
   options: (options: Partial<HoloOptions<T>>) => HoloIOOptions | undefined
   /** a carousel nested in this one (a sub-branch) */
   create: <C = any>(element: HTMLElement | null, options?: HoloOptions<C>) => CarouselHandle<C> | undefined
+  /** presets nested in this one */
+  tabs: <C = any>(wrapper: HTMLElement, options?: TabsOptions<C>) => CarouselHandle<C> | undefined
+  stepper: <C = any>(wrapper: HTMLElement, options?: StepperOptions<C>) => CarouselHandle<C> | undefined
   children: () => CarouselHandle[]
   refresh: () => void
   destroy: () => void
@@ -89,6 +114,37 @@ export interface HoloHandle {
   get: (idOrPath: string) => CarouselHandle | undefined
   all: () => CarouselHandle[]
   link: (a: CarouselHandle | string, b: CarouselHandle | string, mode?: LinkMode) => () => unknown
+
+  // presets: the same carousel model, their own controls and roles
+  tabs: <T = any>(wrapper: HTMLElement, options?: TabsOptions<T>) => CarouselHandle<T> | undefined
+  stepper: <T = any>(wrapper: HTMLElement, options?: StepperOptions<T>) => CarouselHandle<T> | undefined
+  pager: <T = any>(element: HTMLElement, options?: HoloOptions<T>) => CarouselHandle<T> | undefined
+
+  // state and bindings: any element follows a Cyre channel
+  /** a value in a channel (holo/<id>; '/x' from the root) */
+  state: <T>(id: string, initial: T) => StateHandle<T> | undefined
+  /** an element shows a channel (render returns its text, or changes it) */
+  bind: <T = any>(target: string | Element, id: string, render?: (value: T, element: HTMLElement) => unknown) => () => void
+  /** a container keeps one element per item of an array channel (keyed) */
+  list: <T = any>(target: string | Element, id: string, options: ListOptions<T>) => () => void
+  /** a form field and a channel, both ways */
+  bindInput: <T = string>(target: string | Element, id: string, options?: InputOptions<T>) => () => void
+  /** data-bind / data-bind-input markup */
+  bindAll: (root?: ParentNode) => number
+  on: (id: string, handler: (payload: any) => unknown) => () => unknown
+  call: (id: string, payload?: unknown) => Promise<unknown>
+
+  // routing
+  /** start routing (hash by default) - carousels with `route` start it themselves */
+  router: (options?: RouterOptions) => void
+  /** go to a path: holo.navigate('/work/alpha') */
+  navigate: (route: string) => void
+  /** the path the carousels show */
+  route: () => string
+
+  /** gesture numbers for the whole page: tune({deceleration: 0.002}); tune() reads, tune('reset') restores */
+  tune: (values?: Partial<GestureTuning> | 'reset') => GestureTuning
+
   refresh: () => void
   destroy: () => void
 }
@@ -105,6 +161,14 @@ const pathOf = (target: CarouselHandle | string): string =>
 
 const call = (path: string, event: string, payload?: unknown) =>
   holoStore.getBranch(path)?.call(event, payload)
+
+/** an item's index from its key (a string) or an index (a number) */
+const indexOfItem = (path: string, keyOrIndex: string | number): number => {
+  const data = holoStore.getInstance(path)?.data
+  if (!data) return -1
+  if (typeof keyOrIndex === 'number') return keyOrIndex >= 0 && keyOrIndex < data.items.length ? keyOrIndex : -1
+  return data.keys.indexOf(String(keyOrIndex))
+}
 
 /** the handle of a carousel path */
 const carouselHandle = (path: string): CarouselHandle => {
@@ -132,12 +196,31 @@ const carouselHandle = (path: string): CarouselHandle => {
     append: items => void call(path, EVENTS.ITEMS, [...((dataOf()?.items as any[]) || []), ...items]),
     remove: keyOrIndex => {
       const data = dataOf()
-      if (!data) return
-      const at =
-        typeof keyOrIndex === 'number' ? keyOrIndex : data.keys.indexOf(String(keyOrIndex))
-      if (at < 0) return
+      const at = indexOfItem(path, keyOrIndex)
+      if (!data || at < 0) return
       call(path, EVENTS.ITEMS, data.items.filter((_, i) => i !== at))
     },
+    insert: (index, items) => {
+      const list = [...((dataOf()?.items as any[]) || [])]
+      list.splice(Math.max(0, Math.min(index, list.length)), 0, ...items)
+      call(path, EVENTS.ITEMS, list)
+    },
+    move: (keyOrIndex, to) => {
+      const list = [...((dataOf()?.items as any[]) || [])]
+      const from = indexOfItem(path, keyOrIndex)
+      if (from < 0) return
+      const [item] = list.splice(from, 1)
+      list.splice(Math.max(0, Math.min(to, list.length)), 0, item)
+      call(path, EVENTS.ITEMS, list)
+    },
+    update: (keyOrIndex, item) => {
+      const list = [...((dataOf()?.items as any[]) || [])]
+      const at = indexOfItem(path, keyOrIndex)
+      if (at < 0) return
+      list[at] = typeof item === 'function' ? (item as (item: any) => any)(list[at]) : item
+      call(path, EVENTS.ITEMS, list)
+    },
+    patch: change => call(path, EVENTS.ITEMS, change([...((dataOf()?.items as any[]) || [])])),
     items: () => ((dataOf()?.items as any[]) || []).slice(),
     loading: (on = true, count) => setLoading(path, on, count),
     fullscreen: async on => {
@@ -156,6 +239,14 @@ const carouselHandle = (path: string): CarouselHandle => {
       const child = holoCreateElement(element, options, {holo: current.holo, parent: path})
       return child ? carouselHandle(child) : undefined
     },
+    tabs: (wrapper, options) => {
+      const current = holoStore.getInstance(path)
+      return current ? handleOf(tabs(current.holo, wrapper, options, path)) : undefined
+    },
+    stepper: (wrapper, options) => {
+      const current = holoStore.getInstance(path)
+      return current ? handleOf(stepper(current.holo, wrapper, options, path)) : undefined
+    },
     children: () => (holoStore.getInstance(path)?.children || []).map(carouselHandle),
     refresh: () => void call(path, EVENTS.REFRESH_CAROUSEL),
     destroy: () => {
@@ -165,6 +256,8 @@ const carouselHandle = (path: string): CarouselHandle => {
   }
   return handle
 }
+
+const handleOf = (path: string): CarouselHandle | undefined => (path ? carouselHandle(path) : undefined)
 
 /** the handle of a Holo instance */
 const holoHandle = (path: string): HoloHandle => {
@@ -190,10 +283,32 @@ const holoHandle = (path: string): HoloHandle => {
         .map(carouselHandle)
     },
     link: (a, b, mode = 'sync') => linkCarousels(pathOf(a), pathOf(b), mode),
+    tabs: (wrapper, options) => handleOf(tabs(path, wrapper, options)),
+    stepper: (wrapper, options) => handleOf(stepper(path, wrapper, options)),
+    pager: (element, options) => handleOf(pager(path, element, options)),
+    state: (id, initial) => createState(path, id, initial),
+    bind: (target, id, render) => bind(path, target, id, render),
+    list: (target, id, options) => list(path, target, id, options),
+    bindInput: (target, id, options) => bindInput(path, target, id, options),
+    bindAll: root => bindAll(path, root),
+    on: (id, handler) => {
+      const node = id.startsWith('/') ? cyre : holo.root
+      return node.on(id.replace(/^\//, ''), handler).unsubscribe || (() => false)
+    },
+    call: (id, payload) => (id.startsWith('/') ? cyre : holo.root).call(id.replace(/^\//, ''), payload as any),
+    router: options => startRouter(options),
+    tune,
+    navigate: route => {
+      startRouter()
+      applyRoute(route, true)
+      writeRoute()
+    },
+    route: () => currentRoute(),
     refresh: () => void holo.root.call(EVENTS.REFRESH_SCREEN),
     destroy: () => {
       const current = holoStore.getHolo(path)
       if (!current) return
+      unbindAll(path)
       for (const top of [...current.carousels]) holoStore.removeInstance(top, false)
       current.root.destroy()
       holoStore.removeHolo(path)
@@ -266,6 +381,7 @@ const Holo = (() => {
     TOUCH: Touch,
     EVENTS,
     use: useHolo,
+    tune,
 
     INIT: (options: string | HoloInitOptions = {}) => {
       const {className = CSS_CLASSES.CAROUSEL, cyre: parent} =

@@ -11,9 +11,10 @@ import {
   HoloSystemState,
   HoloInstanceState,
   HoldReason,
-  DataState
+  DataState,
+  HoloEffectDefinition
 } from '../types/interface'
-import {ANIMATION, DEFAULT_IO_OPTIONS} from '../config/holo-config'
+import {ANIMATION, DEFAULT_IO_OPTIONS, GESTURE, Gesture} from '../config/holo-config'
 
 // Create default states
 export const createDefaultIOOptions = (id: string): HoloIOOptions => ({
@@ -48,6 +49,7 @@ export const createDefaultVirtualDom = (id: string): VirtualDomState => ({
   page: 0,
   pages: 1,
   viewport: 0,
+  offsets: null,
   item: {max: 8}
 })
 
@@ -61,7 +63,7 @@ export const createDefaultTouchState = (): TouchState => ({
   longPressTimer: 0,
   suppressUntil: 0,
   lastTap: {time: 0, x: 0, y: 0},
-  wheel: {axis: '', last: 0, main: 0, cross: 0, timer: 0},
+  wheel: {axis: '', last: 0, main: 0, cross: 0, timer: 0, prev: 0, peak: 0, falling: 0, rising: 0},
   pointerId: -1,
   positionX: 0,
   positionY: 0,
@@ -77,7 +79,8 @@ const createDefaultSystemState = (): HoloSystemState => ({
   cleanup: () => {},
   sequence: 0,
   ids: {},
-  defaultHolo: ''
+  defaultHolo: '',
+  router: {mode: '', base: '/', titles: false, baseTitle: '', applying: false, cleanup: () => {}}
 })
 
 // The one place Holo state lives: every Holo instance (one per useHolo)
@@ -89,7 +92,9 @@ const createHoloStore = () => {
   const state: HoloState = {
     system: createDefaultSystemState(),
     holos: {},
-    carousels: {}
+    carousels: {},
+    effects: {},
+    gesture: {...GESTURE}
   }
 
   const carouselOf = (path: string): CarouselInstance | undefined =>
@@ -104,6 +109,29 @@ const createHoloStore = () => {
 
     /** next id for a carousel without one */
     nextId: (): string => `holo-${++state.system.sequence}`,
+
+    // --- gesture tuning: one feel for the page; read live, so a change
+    // applies to the next gesture of every carousel
+    gesture: (): Gesture => state.gesture,
+
+    tune: (values: Partial<Gesture>): Gesture => {
+      Object.assign(state.gesture, values)
+      return state.gesture
+    },
+
+    resetGesture: (): Gesture => {
+      Object.assign(state.gesture, GESTURE)
+      return state.gesture
+    },
+
+    // --- effects (stage effects register here; core knows slide, center, fade, ring)
+    registerEffect: (effect: HoloEffectDefinition): void => {
+      state.effects[effect.name] = effect
+    },
+
+    getEffect: (name: string): HoloEffectDefinition | undefined => state.effects[name],
+
+    hasEffect: (name: string): boolean => !!state.effects[name],
 
     // --- Holo instances ----------------------------------------------
     addHolo: (holo: HoloInstanceState): HoloInstanceState => {
@@ -184,6 +212,7 @@ const createHoloStore = () => {
         cleanup: () => {},
         unobserve: () => {},
         links: [],
+        meta: {},
         frame: 0,
         tween: null,
         loaded: false,
@@ -313,6 +342,7 @@ const createHoloStore = () => {
   function teardown(instance: CarouselInstance): void {
     if (instance.frame) cancelAnimationFrame(instance.frame)
     if (instance.tween?.frame) cancelAnimationFrame(instance.tween.frame)
+    if (instance.data?.frame) cancelAnimationFrame(instance.data.frame)
     if (instance.settleTimer) clearTimeout(instance.settleTimer)
     if (instance.touchState.longPressTimer) clearTimeout(instance.touchState.longPressTimer)
     if (instance.touchState.wheel.timer) clearTimeout(instance.touchState.wheel.timer)

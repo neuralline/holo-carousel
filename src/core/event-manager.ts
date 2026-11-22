@@ -1,7 +1,7 @@
 //src/core/event-manager.ts
 
 import {Cyre, cyre, log} from 'cyre'
-import {EVENTS, GESTURE, HOLO_BRANCH} from '../config/holo-config'
+import {EVENTS, HOLO_BRANCH} from '../config/holo-config'
 import {CyreNode, HoloBranch, HoldReason, HoloInstanceState} from '../types/interface'
 import {holoStore} from './state'
 import {
@@ -21,6 +21,7 @@ import {
 } from '../components/holo-essentials'
 import {measureCarousel, nudgeCarousel, placeCarousel, renderItems} from '../components/holo-render'
 import {refreshLayout} from '../components/holo-io-manager'
+import {routeReady} from '../components/holo-router'
 
 export type {CyreNode}
 
@@ -70,7 +71,7 @@ export const initializeHolo = (
   const {branch, owns, control} = attachBranch(
     name,
     root => {
-      if (!root.channel({id: EVENTS.REFRESH_SCREEN, debounce: GESTURE.REFRESH_DEBOUNCE * 2}).ok) {
+      if (!root.channel({id: EVENTS.REFRESH_SCREEN, debounce: holoStore.gesture().REFRESH_DEBOUNCE * 2}).ok) {
         return false
       }
       root.on(EVENTS.REFRESH_SCREEN, () => {
@@ -92,7 +93,14 @@ export const initializeHolo = (
     return null
   }
 
-  return holoStore.addHolo({path: branch.path(), root: branch, owns, control: control || null, carousels: []})
+  return holoStore.addHolo({
+    path: branch.path(),
+    root: branch,
+    owns,
+    control: control || null,
+    carousels: [],
+    bindings: {}
+  })
 }
 
 /** auto-play interval for a carousel */
@@ -117,7 +125,7 @@ export const initializeCarouselChannels = (path: string): boolean => {
   const {branch} = instance
 
   const registered = branch.channel([
-    {id: EVENTS.REFRESH_CAROUSEL, debounce: GESTURE.REFRESH_DEBOUNCE},
+    {id: EVENTS.REFRESH_CAROUSEL, debounce: holoStore.gesture().REFRESH_DEBOUNCE},
     {id: EVENTS.GO_TO},
     {id: EVENTS.SNAP},
     {id: EVENTS.NEXT_SLIDE},
@@ -127,7 +135,7 @@ export const initializeCarouselChannels = (path: string): boolean => {
     {id: EVENTS.ANIMATE_FORWARD},
     {id: EVENTS.ANIMATE_BACKWARD},
     {id: EVENTS.ACTIVATE},
-    {id: EVENTS.WHEELER, throttle: GESTURE.WHEEL_THROTTLE},
+    {id: EVENTS.WHEELER, throttle: holoStore.gesture().WHEEL_THROTTLE},
     {id: EVENTS.SHAKE},
     {id: EVENTS.SETTLE, delay: 160},
     {id: EVENTS.ITEMS},
@@ -186,7 +194,7 @@ export const initializeCarouselChannels = (path: string): boolean => {
 const shake = (path: string, direction: 1 | -1): void => {
   const instance = holoStore.getInstance(path)
   if (!instance?.Dom || instance.virtualDom.duration === 0) return
-  nudgeCarousel(path, direction, GESTURE.SHAKE)
+  nudgeCarousel(path, direction, holoStore.gesture().SHAKE)
 }
 
 /** mark an item current and bring it into view */
@@ -220,12 +228,27 @@ export const setItems = (path: string, items: unknown[]): void => {
   const list = Array.isArray(items) ? items.slice() : []
   holoStore.updateData(path, {items: list, keys: keysOf(list, instance.data.key), loading: false})
   instance.Dom?.carousel.removeAttribute('aria-busy')
-  if (instance.Dom) {
+  const routed = !!instance.virtualDom.io.route
+  if (!instance.Dom || typeof requestAnimationFrame !== 'function') {
+    if (routed) instance.meta.routed = false // the new measure must not write the path
+    measureCarousel(path) // headless: the model at once
+    if (routed) routeReady(path)
+    return
+  }
+  // a live feed may update many times a frame: draw once per frame, with
+  // the latest items (the model already has them)
+  if (instance.data.frame) return
+  instance.data.frame = requestAnimationFrame(() => {
+    const current = holoStore.getInstance(path)
+    if (!current?.data) return
+    current.data.frame = 0
+    // a deep link to an item that just arrived: measure without writing
+    // the path, then read the address bar
+    if (routed) current.meta.routed = false
     renderItems(path)
     measureCarousel(path)
-  } else {
-    measureCarousel(path)
-  }
+    if (routed) routeReady(path)
+  })
 }
 
 /**

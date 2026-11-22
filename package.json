@@ -1,6 +1,6 @@
 {
   "name": "holo-carousel",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Reactive carousel",
   "main": "dist/cjs/index.cjs",
   "module": "dist/es/index.js",
@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "vite build --mode umd && node --experimental-strip-types --test test/e2e/holo.e2e.ts",
     "lint": "eslint --ext .ts,.tsx src",
     "prepublishOnly": "npm run test && npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit --emitDeclarationOnly false"
@@ -34,8 +35,9 @@
     "cyre": "link:../cyre",
     "eslint": "^10.15.0",
     "jsdom": "^31.0.1",
+    "playwright-core": "^1.56.0",
     "rimraf": "^6.1.4",
-    "terser": "^5.51.2",
+    "terser": "^5.51.3",
     "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
     "tslib": "^2.9.1",
@@ -61,6 +63,14 @@
       "import": "./dist/es/index.js",
       "require": "./dist/cjs/index.cjs",
       "browser": "./dist/umd/holo.js"
+    },
+    "./lite": {
+      "import": "./dist/es/lite.js",
+      "require": "./dist/cjs/lite.cjs"
+    },
+    "./effects": {
+      "import": "./dist/es/effects.js",
+      "require": "./dist/cjs/effects.cjs"
     }
   },
   "peerDependencies": {

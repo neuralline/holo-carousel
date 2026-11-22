@@ -16,6 +16,7 @@ import {
 import {keysOf, normalizeBreakpoints, normalizeOptions, pageTarget, setTrack} from './holo-essentials'
 import {measureCarousel, stopMove, watchImages} from './holo-render'
 import {applyBreakpoint, hashIndex, lazyLoad, writeHash} from './holo-features'
+import {routeChanged, routeReady} from './holo-router'
 
 type Cleanup = () => void
 
@@ -136,7 +137,7 @@ const applyA11y = (path: string): void => {
   carousel.setAttribute(PATH_ATTRIBUTE, path)
   carousel.classList.add(CSS_CLASSES.CAROUSEL)
   carousel.setAttribute('role', 'region')
-  carousel.setAttribute('aria-roledescription', 'carousel')
+  carousel.setAttribute('aria-roledescription', carousel.dataset.holoPreset || 'carousel')
   if (!carousel.hasAttribute('aria-label') && !carousel.hasAttribute('aria-labelledby')) {
     carousel.setAttribute('aria-label', carousel.dataset.title || 'Carousel')
   }
@@ -271,6 +272,7 @@ export const setupFeatures = (path: string): Cleanup => {
     const current = holoStore.getVirtualDom(path)
     if (current?.io.hash) writeHash(current.io.hash, current.index)
     if (current?.io.animate && !holoStore.isHeld(path)) startAutoplay(path)
+    if (current?.io.route) routeChanged(path)
   })
   if (followers.unsubscribe) cleanups.push(followers.unsubscribe as Cleanup)
   if (io.hash) {
@@ -340,6 +342,20 @@ export const setupCarousel = (path: string): boolean => {
   observers.push(listen(document, 'fullscreenchange', () => refreshCarousel(path)))
   // markup images: placeholders until they arrive
   Array.from(Dom.container.children).forEach(slot => watchImages(slot as HTMLElement))
+  // markup carousels follow their own children: slides added or removed
+  // by anything else are picked up (data carousels change only through items)
+  if (!instance.data && typeof MutationObserver !== 'undefined') {
+    const changes = new MutationObserver(records => {
+      for (const record of records) {
+        record.addedNodes.forEach(node => {
+          if (node instanceof HTMLElement) watchImages(node)
+        })
+      }
+      refreshCarousel(path)
+    })
+    changes.observe(Dom.container, {childList: true})
+    observers.push(() => changes.disconnect())
+  }
 
   // a data carousel's slots are Holo's: empty and remove them on teardown
   if (instance.data) {
@@ -364,6 +380,7 @@ export const setupCarousel = (path: string): boolean => {
 
   const start = instance.virtualDom.io.hash ? hashIndex(instance.virtualDom.io.hash) : -1
   if (start >= 0) setTrack(path, start, false)
+  if (instance.virtualDom.io.route) routeReady(path)
   lazyLoad(path)
   return true
 }

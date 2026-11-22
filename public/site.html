@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Studio Holo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      /* a whole site from holos: a routed pager of pages, a data gallery
+         from a Cyre "network" channel, tabs, a stepper and bindings */
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1119; color: #dbe5f0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; text-shadow: none; }
+      body div { overflow: visible; }
+      a { color: inherit; }
+      .nav { position: fixed; z-index: 5000; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 22px; padding: 16px 28px; background: linear-gradient(#0b1119ee, #0b111900); }
+      .nav .brand { font-weight: 800; letter-spacing: .12em; margin-right: auto; text-decoration: none; }
+      .nav a[data-link] { text-decoration: none; font-size: 14px; opacity: .7; border: 0; outline: 0; }
+      .nav a[data-link]:focus-visible { outline: 2px solid #3ad7ff; outline-offset: 4px; }
+      .nav a[data-link].on { opacity: 1; box-shadow: 0 2px 0 #3ad7ff; }
+      .nav .likes { font-size: 13px; padding: 4px 10px; border-radius: 20px; background: #13263c; }
+
+      #site > .holo-container > .holo { color: #dbe5f0; }
+      .page { box-sizing: border-box; padding: 90px 6vw 40px; position: relative; text-align: left; }
+      .page h1 { font: 800 clamp(34px, 7vw, 86px)/1 system-ui, sans-serif; letter-spacing: -.02em; margin: 0 0 14px; color: #fff; }
+      .page h2 { font: 700 clamp(24px, 4vw, 40px)/1.1 system-ui, sans-serif; margin: 0 0 8px; color: #fff; }
+      .page p.lede { font-size: clamp(15px, 1.6vw, 19px); color: #8ea2b8; max-width: 560px; margin: 0 0 22px; }
+      .hint { position: absolute; bottom: 26px; left: 6vw; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; opacity: .55; }
+
+      /* home: a Ken Burns backdrop */
+      .backdrop { position: absolute; inset: 0; z-index: 0; }
+      .backdrop .holo { width: 100vw; height: 100vh; height: 100dvh; margin: 0; border-radius: 0; }
+      .backdrop .holo img { width: 100%; height: 100%; object-fit: cover; opacity: .38; border-radius: 0; }
+      .home-copy { position: relative; z-index: 1; padding-top: 18vh; }
+
+      /* work: mixed-size cards from data */
+      .toolbar { display: flex; gap: 10px; align-items: center; margin: 0 0 16px; }
+      .toolbar input { font: inherit; font-size: 14px; color: #fff; background: #13263c; border: 1px solid #24476d; border-radius: 8px; padding: 8px 12px; width: 220px; }
+      .toolbar .count { font-size: 13px; color: #8ea2b8; }
+      .gallery .holo { height: min(52vh, 420px); margin-right: 14px; border-radius: 14px; overflow: hidden; background: #13263c; position: relative; }
+      .gallery .holo.wide { width: min(560px, 80vw); }
+      .gallery .holo.narrow { width: min(300px, 60vw); }
+      .gallery .holo img { width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
+      .gallery .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 14px; background: linear-gradient(transparent, rgba(0,0,0,.85)); white-space: normal; }
+      .gallery .meta b { display: block; font-size: 17px; color: #fff; }
+      .gallery .meta span { font-size: 12px; color: #9fb3c8; }
+      .gallery .like { position: absolute; top: 10px; right: 10px; font: inherit; font-size: 13px; color: #fff; background: rgba(0,0,0,.45); border: 0; border-radius: 16px; padding: 5px 10px; cursor: pointer; }
+      .gallery .like[aria-pressed='true'] { background: #e0457b; }
+      .project-path { margin-top: 12px; font: 12px ui-monospace, monospace; color: #7f93a8; }
+
+      /* about: tabs */
+      .tabs-wrap { max-width: 760px; }
+      .tabs-wrap .holo { width: min(760px, 88vw); margin: 0; font-size: 16px; line-height: 1.6; white-space: normal; height: auto; color: #b9c8d8; }
+      .tabs-wrap .holo h3 { display: none; }
+      .chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+      .chips li { font-size: 13px; padding: 5px 12px; border-radius: 16px; background: #13263c; }
+      .liked { list-style: none; padding: 0; margin: 8px 0 0; }
+      .liked li { padding: 6px 0; border-bottom: 1px solid #1a2c40; font-size: 14px; }
+      .liked[data-empty] { color: #6d8296; font-size: 14px; }
+
+      /* contact: a stepper */
+      .form-wrap { max-width: 620px; }
+      .form-wrap .holo { width: min(620px, 88vw); margin: 0; height: auto; white-space: normal; font-size: 15px; }
+      .form-wrap label { display: block; font-size: 13px; color: #8ea2b8; margin: 0 0 6px; }
+      .form-wrap input, .form-wrap textarea { box-sizing: border-box; width: 100%; font: inherit; color: #fff; background: #13263c; border: 1px solid #24476d; border-radius: 8px; padding: 10px 12px; }
+      .form-wrap textarea { min-height: 110px; resize: vertical; }
+      .review dt { font-size: 12px; color: #8ea2b8; margin-top: 10px; }
+      .review dd { margin: 2px 0 0; color: #fff; white-space: pre-wrap; }
+      .toast { position: fixed; z-index: 6000; left: 50%; bottom: 30px; transform: translateX(-50%) translateY(30px); opacity: 0; transition: .35s; background: #1b6fd1; color: #fff; padding: 12px 20px; border-radius: 10px; font-size: 14px; }
+      .toast.on { opacity: 1; transform: translateX(-50%); }
+
+      #site > .holo-controls .holo-dots { right: 18px; }
+    </style>
+  </head>
+  <body>
+    <nav class="nav">
+      <a class="brand" href="#/home" data-link>STUDIO HOLO</a>
+      <a href="#/home" data-link>Home</a>
+      <a href="#/work" data-link>Work</a>
+      <a href="#/about" data-link>About</a>
+      <a href="#/contact" data-link>Contact</a>
+      <span class="likes" aria-live="polite">♥ <span data-bind="likeCount">0</span></span>
+    </nav>
+
+    <div id="site" class="holo-carousel" aria-label="Studio Holo">
+      <div class="holo-container">
+        <section class="holo page" data-route="home" data-title="Home">
+          <div id="backdrop" class="backdrop" aria-hidden="true"></div>
+          <div class="home-copy">
+            <h1>Moving pictures,<br />still frames.</h1>
+            <p class="lede">A small studio site built only from holos: pages, a gallery, tabs and a form are all carousels on one Cyre tree.</p>
+          </div>
+          <div class="hint">Scroll, swipe or use the keys ↓</div>
+        </section>
+
+        <section class="holo page" data-route="work" data-title="Work">
+          <h2>Work</h2>
+          <p class="lede">Loaded from a Cyre channel. Cards of two widths, each project its own path.</p>
+          <div class="toolbar">
+            <input id="filter" placeholder="Filter by name or tag" aria-label="Filter projects" />
+            <span class="count"><span data-bind="shownCount"></span> projects</span>
+          </div>
+          <div id="gallery" class="gallery" aria-label="Projects"></div>
+          <div class="project-path">path: <span data-bind="route"></span></div>
+        </section>
+
+        <section class="holo page" data-route="about" data-title="About">
+          <h2>About</h2>
+          <div id="about" class="tabs-wrap">
+            <div class="holo-carousel" aria-label="About us">
+              <div class="holo-container">
+                <article class="holo" data-title="Studio">
+                  <h3>Studio</h3>
+                  <p>We make image-led sites and small tools. Everything on this page is a carousel: the pages you scroll, the gallery, these tabs and the form.</p>
+                  <p>State lives in Cyre channels; elements bind to them. Change a value anywhere and every element showing it follows.</p>
+                </article>
+                <article class="holo" data-title="Skills">
+                  <h3>Skills</h3>
+                  <ul id="skills" class="chips"></ul>
+                </article>
+                <article class="holo" data-title="Liked">
+                  <h3>Liked</h3>
+                  <p>Projects you liked on the Work page (a list bound to a channel):</p>
+                  <ul id="liked" class="liked"></ul>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="holo page" data-route="contact" data-title="Contact">
+          <h2>Contact</h2>
+          <div id="contact" class="form-wrap">
+            <div class="holo-carousel" aria-label="Contact form">
+              <div class="holo-container">
+                <fieldset class="holo" data-title="You" style="border:0;padding:0">
+                  <label for="name">Name</label>
+                  <input id="name" autocomplete="name" />
+                  <label for="email" style="margin-top:14px">Email</label>
+                  <input id="email" type="email" autocomplete="email" />
+                </fieldset>
+                <fieldset class="holo" data-title="Message" style="border:0;padding:0">
+                  <label for="message">What are you making?</label>
+                  <textarea id="message"></textarea>
+                </fieldset>
+                <div class="holo review" data-title="Review">
+                  <dl>
+                    <dt>Name</dt><dd data-bind="form.name"></dd>
+                    <dt>Email</dt><dd data-bind="form.email"></dd>
+                    <dt>Message</dt><dd data-bind="form.message"></dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="toast" role="status"></div>
+
+    <script src="js/holo.js"></script>
+    <script>
+      var cyre = Cyre.cyre
+      var holo = useHolo()
+      holo.router({titles: true})
+
+      // --- a "network": the app's API is a Cyre branch -----------------
+      var projects = [
+        {slug: 'alpha', name: 'Alpha', tags: 'film identity', img: 'img/25.jpg', wide: true},
+        {slug: 'brine', name: 'Brine', tags: 'ocean poster', img: 'img/26.jpg'},
+        {slug: 'cinder', name: 'Cinder', tags: 'film titles', img: 'img/27.jpg', wide: true},
+        {slug: 'delta', name: 'Delta', tags: 'web motion', img: 'img/28.jpg'},
+        {slug: 'ember', name: 'Ember', tags: 'poster print', img: 'img/29.jpg'},
+        {slug: 'fjord', name: 'Fjord', tags: 'web identity', img: 'img/30.jpg', wide: true},
+        {slug: 'glass', name: 'Glass', tags: 'motion titles', img: 'img/31.jpg'},
+        {slug: 'harbor', name: 'Harbor', tags: 'film print', img: 'img/32.jpg', wide: true},
+        {slug: 'iris', name: 'Iris', tags: 'web poster', img: 'img/33.jpg'},
+        {slug: 'juniper', name: 'Juniper', tags: 'identity motion', img: 'img/34.jpg'}
+      ]
+      var api = cyre.branch('api')
+      api.channel({id: 'projects'})
+      api.on('projects', function () {
+        return new Promise(function (resolve) { setTimeout(function () { resolve(projects) }, 900) })
+      })
+
+      // --- state, in channels ------------------------------------------
+      var likes = holo.state('likes', {})
+      var likeCount = holo.state('likeCount', 0)
+      var liked = holo.state('liked', [])
+      var shown = holo.state('shownCount', projects.length)
+      var route = holo.state('route', '/')
+      holo.on('likes', function (map) {
+        var list = projects.filter(function (p) { return map[p.slug] })
+        likeCount.set(list.length)
+        liked.set(list)
+      })
+      holo.state('skills', ['Art direction', 'Motion', 'Web', 'Identity', 'Print', 'Cyre', 'Holo'])
+
+      // --- the pages: a routed pager ----------------------------------
+      var site = holo.pager(document.getElementById('site'), {route: true})
+      var markNav = function () {
+        var path = holo.route()
+        route.set(path)
+        document.querySelectorAll('.nav a[data-link]').forEach(function (a) {
+          a.classList.toggle('on', a.getAttribute('href') !== '#/home' && path.indexOf(a.getAttribute('href').slice(1)) === 0 || (path === '/home' && a.getAttribute('href') === '#/home' && !a.classList.contains('brand')))
+        })
+      }
+
+      // home backdrop: Ken Burns, nested in the first page
+      site.create(document.getElementById('backdrop'), {
+        id: 'backdrop',
+        items: ['img/30.jpg', 'img/33.jpg', 'img/27.jpg', 'img/31.jpg'],
+        render: function (src, i, slot) { slot.innerHTML = '<img src="' + src + '" alt="">' },
+        effect: 'kenburns',
+        loop: 1,
+        animate: 6000,
+        drag: 0,
+        swipe: 0,
+        keyboard: 0,
+        focus: 0
+      })
+
+      // work: projects from the api, mixed widths, one path each
+      var card = function (p, i, slot) {
+        slot.className = 'holo transition ' + (p.wide ? 'wide' : 'narrow')
+        slot.dataset.route = p.slug
+        var on = !!likes.get()[p.slug]
+        slot.innerHTML = '<img src="' + p.img + '" alt=""><button class="like" aria-pressed="' + on + '" data-slug="' + p.slug + '">♥</button>' +
+          '<div class="meta"><b>' + p.name + '</b><span>' + p.tags + '</span></div>'
+      }
+      var gallery = site.create(document.getElementById('gallery'), {
+        id: 'gallery',
+        items: cyre.call('api/projects').then(function (r) { return r.payload }),
+        key: function (p) { return p.slug },
+        render: card,
+        route: function (p) { return p.slug },
+        placeholders: 4,
+        controller: 1,
+        wheel: 0
+      })
+      document.getElementById('gallery').addEventListener('click', function (e) {
+        var button = e.target.closest('.like')
+        if (!button) return
+        var slug = button.dataset.slug
+        likes.update(function (map) {
+          var next = Object.assign({}, map)
+          if (next[slug]) delete next[slug]; else next[slug] = true
+          button.setAttribute('aria-pressed', String(!!next[slug]))
+          return next
+        })
+      })
+      holo.bindInput('#filter', 'query')
+      holo.on('query', function (q) {
+        q = (q || '').toLowerCase()
+        var list = projects.filter(function (p) { return !q || (p.name + ' ' + p.tags).toLowerCase().indexOf(q) >= 0 })
+        shown.set(list.length)
+        gallery.set(list)
+      })
+
+      // about: tabs, a bound list of skills and of liked projects
+      site.tabs(document.getElementById('about'))
+      holo.list('#skills', 'skills', {render: function (s, i, li) { li.textContent = s }})
+      holo.list('#liked', 'liked', {
+        key: function (p) { return p.slug },
+        render: function (p, i, li) { li.textContent = p.name + ' · ' + p.tags },
+        empty: 'Nothing yet - like a project on the Work page.'
+      })
+
+      // contact: a stepper over bound fields
+      holo.bindInput('#name', 'form.name')
+      holo.bindInput('#email', 'form.email')
+      holo.bindInput('#message', 'form.message')
+      var toast = document.querySelector('.toast')
+      site.stepper(document.getElementById('contact'), {
+        validate: function (index) {
+          if (index === 0) {
+            if (!holo.state('form.name', '').get()) return 'Your name, please.'
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(holo.state('form.email', '').get() || '')) return 'That email does not look right.'
+          }
+          if (index === 1 && !(holo.state('form.message', '').get() || '').trim()) return 'A few words about it?'
+          return true
+        },
+        onComplete: function () {
+          toast.textContent = 'Thanks, ' + holo.state('form.name', '').get() + ' - we will write back.'
+          toast.classList.add('on')
+          setTimeout(function () { toast.classList.remove('on') }, 3000)
+        },
+        finishLabel: 'Send'
+      })
+
+      holo.bindAll()
+      // the nav follows every routed move
+      site.on('change', markNav)
+      gallery.on('change', markNav)
+      setTimeout(markNav, 0)
+    </script>
+  </body>
+</html>

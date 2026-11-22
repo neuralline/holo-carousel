@@ -54,19 +54,28 @@ export default defineConfig(({mode}) => {
     build: {
       outDir: 'dist',
       lib: {
-        entry: path.resolve(__dirname, 'src/index.ts'),
+        // es / cjs: three entries sharing chunks - the full build, lite
+        // (no stage effects) and the effects on their own. umd: the full
+        // build in one file.
+        entry: umd
+          ? path.resolve(__dirname, 'src/index.ts')
+          : {
+              index: path.resolve(__dirname, 'src/index.ts'),
+              lite: path.resolve(__dirname, 'src/lite.ts'),
+              effects: path.resolve(__dirname, 'src/effects.ts')
+            },
         name: projectName,
         formats: umd ? ['umd'] : ['es', 'cjs'],
-        fileName: format => {
+        fileName: (format, entryName) => {
           switch (format) {
             case 'es':
-              return 'es/index.js'
+              return `es/${entryName}.js`
             case 'cjs':
-              return 'cjs/index.cjs' // Use .cjs extension for CommonJS
+              return `cjs/${entryName}.cjs` // Use .cjs extension for CommonJS
             case 'umd':
               return `umd/${projectName}.js`
             default:
-              return `${format}/index.js`
+              return `${format}/${entryName}.js`
           }
         }
       },

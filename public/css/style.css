@@ -353,6 +353,9 @@ ul {
   max-width: 100%;
   overscroll-behavior-x: contain;
 }
+.holo-carousel.holo-vertical {
+  overscroll-behavior-y: contain;
+}
 
 /* the page keeps scrolling across the carousel; Holo takes the other axis */
 .holo-carousel > .holo-container {
@@ -471,7 +474,7 @@ ul {
   border: none;
   transition: width 250ms ease, background 250ms ease;
 }
-.holo-dots .holo-dot.active {
+.holo-dots .holo-dot.holo-active {
   width: 22px;
   background: #fff;
 }
@@ -523,7 +526,7 @@ ul {
   flex-direction: column;
   align-items: center;
 }
-.holo-vertical .holo-dots .holo-dot.active {
+.holo-vertical .holo-dots .holo-dot.holo-active {
   width: 8px;
   height: 22px;
 }
@@ -711,4 +714,135 @@ ul {
   .holo-carousel[data-builds] [data-build] {
     transition: none;
   }
+}
+
+/* --- Holo 3.4: presets ------------------------------------------------- */
+
+/* tabs */
+.holo-tablist {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.holo-tablist [role='tab'] {
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  opacity: 0.65;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.holo-tablist [role='tab']:hover {
+  opacity: 0.9;
+}
+.holo-tablist [role='tab'][aria-selected='true'] {
+  opacity: 1;
+  border-bottom-color: #3ad7ff;
+}
+.holo-tablist [role='tab']:focus-visible {
+  outline: 2px solid #3ad7ff;
+  outline-offset: -2px;
+}
+
+/* stepper */
+.holo-steps {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  counter-reset: holo-step;
+}
+.holo-steps li {
+  flex: 1;
+  counter-increment: holo-step;
+}
+.holo-steps button {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-top: 3px solid rgba(255, 255, 255, 0.18);
+  padding: 8px 2px 0;
+  cursor: pointer;
+}
+.holo-steps button::before {
+  content: counter(holo-step) '. ';
+  opacity: 0.6;
+}
+.holo-steps button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.holo-steps li[data-state='done'] button {
+  border-top-color: rgba(58, 215, 255, 0.55);
+}
+.holo-steps li[data-state='current'] button {
+  border-top-color: #3ad7ff;
+  font-weight: 600;
+}
+.holo-step-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.holo-step-actions button {
+  font: inherit;
+  font-size: 14px;
+  color: #fff;
+  background: #10253d;
+  border: 1px solid #24476d;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.holo-step-actions button[data-step-next] {
+  background: #1b6fd1;
+  border-color: #1b6fd1;
+}
+.holo-step-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.holo-step-error {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  color: #ff8a8a;
+}
+
+/* vertical carousels stack their items */
+.holo-carousel.holo-vertical > .holo-container {
+  white-space: normal;
+}
+.holo-carousel.holo-vertical > .holo-container > .holo {
+  display: block;
+}
+
+/* pager: one screen per section */
+.holo-pager {
+  height: 100vh;
+  height: 100dvh;
+}
+.holo-pager > .holo-container > .holo {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  border-radius: 0;
+  white-space: normal;
+  font-size: 16px;
+  overflow: hidden;
 }

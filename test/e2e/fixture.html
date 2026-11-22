@@ -1,0 +1,121 @@
+<!doctype html>
+<!-- test/e2e/fixture.html -->
+<!--
+    Neural Line
+    Reactive carousel - browser test fixture
+    H.O.L.O - C.A.R.O.U.S.E.L
+    Q0.0U0.0A0.0N0.0T0.0U0.0M0 - I0.0N0.0C0.0E0.0P0.0T0.0I0.0O0.0N0.0S0
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Holo e2e fixture</title>
+    <link rel="stylesheet" href="/public/css/style.css" />
+    <style>
+      /* fixed sizes and no images: every measurement is predictable */
+      body { margin: 0; font: 14px system-ui; }
+      .spacer { height: 300px; }
+      .tall { height: 2400px; }
+      .box { width: 600px; margin: 0 40px; }
+      #strip { display: block; width: 600px; }
+      #strip .holo { width: 300px; }
+      .card { box-sizing: border-box; width: 300px; height: 160px; border: 1px solid #999; background: #ddd; }
+      #outer .holo { width: 600px; height: 220px; }
+      #inner .holo { width: 200px; height: 120px; }
+    </style>
+  </head>
+  <body>
+    <div class="spacer"></div>
+    <div class="box"><div id="strip"></div></div>
+    <div class="spacer"></div>
+    <div class="box">
+      <carousel id="outer" class="holo-carousel">
+        <div class="holo-container">
+          <div class="holo"><div style="width: 600px"><carousel id="inner" class="holo-carousel">
+            <div class="holo-container"><div class="holo">a</div><div class="holo">b</div><div class="holo">c</div><div class="holo">d</div><div class="holo">e</div></div>
+          </carousel></div></div>
+          <div class="holo">2</div>
+          <div class="holo">3</div>
+        </div>
+      </carousel>
+    </div>
+    <div class="tall"></div>
+
+    <script src="/public/js/holo.js"></script>
+    <script>
+      // handles and a log of what the carousels said, for the tests to read
+      window.events = []
+      var holo = useHolo()
+      var strip = holo.create(document.getElementById('strip'), {
+        id: 'strip',
+        items: Array.from({length: 30}, function (_, i) { return {id: 'c' + i} }),
+        key: 'id',
+        render: function (item, index, slot) {
+          slot.innerHTML = '<div class="card">' + index + '</div>'
+        },
+        slots: 2,
+        step: 1,
+        transition: 600
+      })
+      var outer = holo.create(document.getElementById('outer'), {id: 'outer', slots: 1, transition: 300})
+      var inner = outer.create(document.getElementById('inner'), {id: 'inner', slots: 3, transition: 300})
+      ;[['strip', strip], ['outer', outer], ['inner', inner]].forEach(function (pair) {
+        ;['swipe', 'change'].forEach(function (type) {
+          pair[1].on(type, function (payload) { window.events.push({from: pair[0], type: type, payload: payload}) })
+        })
+      })
+      window.h = {holo: holo, strip: strip, outer: outer, inner: inner}
+
+      // the strip's drawn position in items (fractional), from its transform
+      window.position = function (id) {
+        var container = document.querySelector('#' + id + ' .holo-container')
+        // one item's step: its width plus the gap after it
+        var size = container.children[1].getBoundingClientRect().left - container.children[0].getBoundingClientRect().left
+        var match = /translate3d\((-?[\d.]+)px/.exec(container.style.transform)
+        return match ? -parseFloat(match[1]) / size : 0
+      }
+
+      // record the position every frame until stop()
+      window.record = function (id) {
+        var log = []
+        var on = true
+        ;(function frame() {
+          log.push([performance.now(), window.position(id)])
+          if (on) requestAnimationFrame(frame)
+        })()
+        return function stop() { on = false; return log }
+      }
+
+      // a trackpad swipe: fingers (rising to `peak` px per event), then the
+      // system's momentum (each event `decay` times the last), one per frame.
+      // `then(i)` runs before event i (to refresh or regrip mid-glide).
+      window.trackpad = function (id, opts) {
+        var el = document.getElementById(id) // the carousel, not its (long) strip
+        var box = el.getBoundingClientRect()
+        var x = box.left + box.width / 2, y = box.top + box.height / 2
+        var deltas = []
+        var sign = opts.direction || 1
+        for (var i = 0; i < (opts.finger || 8); i++) deltas.push(sign * opts.peak * Math.min(1, (i + 1) / 3))
+        var d = opts.peak
+        while ((d *= opts.decay || 0.92) > 0.5 && deltas.length < 140) deltas.push(sign * d)
+        if (opts.extra) deltas = deltas.slice(0, opts.cut || deltas.length).concat(opts.extra)
+        return new Promise(function (done) {
+          var k = 0
+          ;(function frame() {
+            if (opts.then) opts.then(k)
+            if (k < deltas.length) {
+              var target = document.elementFromPoint(x, y)
+              target.dispatchEvent(new WheelEvent('wheel', {
+                deltaX: deltas[k], deltaY: deltas[k] * 0.1, deltaMode: 0,
+                clientX: x, clientY: y, bubbles: true, cancelable: true
+              }))
+              k++
+              requestAnimationFrame(frame)
+            } else done(deltas.length)
+          })()
+        })
+      }
+    </script>
+  </body>
+</html>

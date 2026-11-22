@@ -1,6 +1,7 @@
 //src/types/interface.ts
 
 import type {CyreBranch, CyreControl, CyrePublic} from 'cyre'
+import type {Gesture} from '../config/holo-config'
 
 // A Holo instance's branch (holo), a carousel's (holo/<id>, nested
 // holo/<id>/<child>) or an accordion's. Every channel a carousel owns
@@ -9,6 +10,41 @@ export type HoloBranch = CyreBranch
 
 /** a node Holo can hang its branch under: root cyre or one of the app's branches */
 export type CyreNode = CyrePublic | CyreBranch
+
+/** what a stage effect draws for one item */
+export interface StageStyle {
+  transform: string
+  opacity: number
+  zIndex: number
+  /** wipes and irises reveal by clipping */
+  clipPath?: string
+}
+
+export interface StageContext {
+  /** item size along the axis */
+  size: number
+  count: number
+  vertical: boolean
+}
+
+/**
+ * A stage effect: how to draw an item from its distance `d` to the
+ * current position (fractional while moving; shortest way round when the
+ * carousel wraps). `raw` is the plain index - track, for effects that
+ * wrap their own way (shuffle).
+ */
+export interface HoloEffectDefinition {
+  name: string
+  style: (d: number, index: number, context: StageContext, raw: number) => StageStyle
+  /** 3D depth (carousel perspective, px) */
+  perspective?: number
+  /** room above and below for cards that scatter or swing (px) */
+  margin?: number
+  /** always wraps (the last item next to the first) */
+  wraps?: boolean
+  /** hide items' backs (cards that turn over) */
+  backface?: boolean
+}
 
 export type HoloEffect =
   | 'slide'
@@ -26,6 +62,7 @@ export type HoloEffect =
   | 'wipe'
   | 'iris'
   | 'kenburns'
+  | (string & {})
 
 /** fill a slot with one item; called again when the item changes */
 export type HoloRender<T = any> = (item: T, index: number, slot: HTMLElement) => void
@@ -69,6 +106,10 @@ export interface HoloOptions<T = any> {
   lazy?: boolean | number
   /** keep the position in the URL: #<hash>=<index> */
   hash?: string
+  /** this carousel's slides are pages: one path segment each (data-route,
+   *  route(item, index), or the number); routed carousels inside a slide
+   *  are the next segment */
+  route?: boolean | ((item: T, index: number) => string)
   /** register channels and listeners only once the carousel is near the screen */
   defer?: boolean
 
@@ -86,7 +127,8 @@ export interface HoloOptions<T = any> {
   items?: T[] | Promise<T[]> | (() => Promise<T[]>)
   render?: HoloRender<T>
   /** stable key per item, so updates reuse slots */
-  key?: (item: T, index: number) => string | number
+  /** a property name ('id') or a function giving each item a stable key */
+  key?: string | ((item: T, index: number) => string | number)
   /** called when a slot is emptied (unmount framework content here) */
   unrender?: (slot: HTMLElement, item: T) => void
   /** keep only the visible items (plus `buffer` either side) in the DOM */
@@ -123,6 +165,7 @@ export interface HoloIOOptions {
   virtual: number
   buffer: number
   momentum: number
+  route: number
   placeholder: string
   placeholders: number
   progress: number
@@ -185,6 +228,8 @@ export interface VirtualDomState {
   pages: number
   /** carousel viewport size along its axis (px) */
   viewport: number
+  /** where each item starts, when items differ in size (slide); null when all match */
+  offsets: number[] | null
   item: {width?: number; height?: number; min?: number; max?: number}
 }
 
@@ -217,13 +262,18 @@ export interface TouchState {
   lastTap: {time: number; x: number; y: number}
   /** a trackpad gesture in progress */
   wheel: {
-    /** '' none, 'main' moving the carousel, 'cross' the page's, 'done' its tail */
-    axis: '' | 'main' | 'cross'
+    /** '' none, 'main' following the fingers, 'cross' the page's, 'glide' flung: Holo carries it, the system's tail is swallowed */
+    axis: '' | 'main' | 'cross' | 'glide'
     last: number
     /** movement gathered before deciding whose the gesture is */
     main: number
     cross: number
     timer: ReturnType<typeof setTimeout> | 0
+    /** the last event's size (px), the biggest so far, and how many in a row shrank / grew */
+    prev: number
+    peak: number
+    falling: number
+    rising: number
   }
   pointerId: number
   positionX: number
@@ -243,7 +293,7 @@ export interface DataState {
   items: unknown[]
   keys: string[]
   render: HoloRender
-  key?: (item: any, index: number) => string | number
+  key?: string | ((item: any, index: number) => string | number)
   unrender?: (slot: HTMLElement, item: any) => void
   /** slot element per key (or per track position when virtual) */
   slots: Record<string, HTMLElement>
@@ -253,6 +303,8 @@ export interface DataState {
   pool: HTMLElement[]
   /** items are on their way: skeleton slots stand in */
   loading: boolean
+  /** a pending draw of new items (one per frame) */
+  frame: number
 }
 
 export type HoldReason = 'hover' | 'focus' | 'pointer' | 'hidden' | 'offscreen' | 'user'
@@ -284,8 +336,10 @@ export interface CarouselInstance {
   cleanup: () => void
   /** removes the resize / load observers */
   unobserve: () => void
-  /** removes links to other carousels */
+  /** removes links to other carousels (and a preset's controls) */
   links: Array<() => void>
+  /** a preset's own state (the furthest step reached, ...) */
+  meta: Record<string, unknown>
   frame: number
   /** a running move animation (stage effects) */
   tween: {from: number; to: number; start: number; duration: number; frame: number} | null
@@ -293,6 +347,15 @@ export interface CarouselInstance {
   loaded: boolean
   /** a timer that normalises a wrapped track after a move */
   settleTimer: ReturnType<typeof setTimeout> | 0
+}
+
+/** an element (or list) bound to a channel; its slots for keyed lists */
+export interface BindingRecord {
+  id: string
+  kind: 'bind' | 'list' | 'input'
+  unbind: () => void
+  slots: Record<string, HTMLElement>
+  rendered: Record<string, unknown>
 }
 
 /** one useHolo() */
@@ -304,6 +367,20 @@ export interface HoloInstanceState {
   control: CyreControl | null
   /** top-level carousel paths */
   carousels: string[]
+  /** elements bound to channels (holo.bind / list / bindInput) */
+  bindings: Record<string, BindingRecord>
+}
+
+/** the router (one per page) */
+export interface HoloRouterState {
+  /** '' until started */
+  mode: '' | 'hash' | 'history'
+  base: string
+  titles: boolean
+  baseTitle: string
+  /** moving carousels to a path (their changes don't write it back) */
+  applying: boolean
+  cleanup: () => void
 }
 
 /** page-wide state shared by every Holo instance */
@@ -318,12 +395,17 @@ export interface HoloSystemState {
   ids: Record<string, string>
   /** the instance the v2 global API (Holo.INIT, ...) uses */
   defaultHolo: string
+  router: HoloRouterState
 }
 
 export interface HoloState {
   system: HoloSystemState
   holos: Record<string, HoloInstanceState>
   carousels: Record<string, CarouselInstance>
+  /** registered stage effects by name */
+  effects: Record<string, HoloEffectDefinition>
+  /** gesture tuning, page-wide (defaults: GESTURE in config) */
+  gesture: Gesture
 }
 
 /** what Holo.on(id, 'change', fn) receives */

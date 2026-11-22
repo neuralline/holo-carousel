@@ -150,6 +150,7 @@ const holoCreateElement = (
         items: initial.slice(),
         keys: keysOf(initial, options.key),
         loading: pending,
+        frame: 0,
         render: options.render || (() => undefined),
         key: options.key,
         unrender: options.unrender,
@@ -170,6 +171,9 @@ const holoCreateElement = (
     branch,
     data
   })
+  if (typeof merged.route === 'function') {
+    holoStore.getInstance(path)!.meta.routeOf = merged.route
+  }
   if (element) {
     element.setAttribute(PATH_ATTRIBUTE, path)
     ensurePageListeners()

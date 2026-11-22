@@ -47,11 +47,18 @@ import {
   shuffleStyle,
   flipStyle
 } from '../src/components/orientation-handler'
-import {classifyMove, landing, wheelLanding, swipeDirection, isNotchedWheel, moveAngle} from '../src/components/holo-touch'
+import {wheelTrend, classifyMove, landing, wheelLanding, swipeDirection, isNotchedWheel, moveAngle} from '../src/components/holo-touch'
 import {moveAt} from '../src/components/holo-render'
 import {wipeStyle, irisStyle, coverStyle, revealStyle} from '../src/components/orientation-handler'
 import {SKELETON, dataList} from '../src/components/holo-essentials'
 import {useHolo} from '../src/app'
+import {registerAllEffects} from '../src/effects'
+import {offsetsOf, offsetAt, trackAt} from '../src/components/orientation-handler'
+import {createState} from '../src/components/holo-bind'
+import {tune, gestureKey, tuningKey} from '../src/components/holo-tune'
+
+// stage effects are separate imports since 3.4 - the full build registers them
+registerAllEffects()
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5))
 
@@ -430,5 +437,120 @@ describe('useHolo (headless)', () => {
     await tick()
     expect(deck.state()!.index).toBe(4)
     holo.destroy()
+  })
+})
+
+describe('variable sizes', () => {
+  const offsets = offsetsOf([560, 300, 300, 560])
+
+  it('adds sizes into start offsets', () => {
+    expect(offsets).toEqual([0, 560, 860, 1160, 1720])
+  })
+
+  it('reads a position at a fractional track and back', () => {
+    expect(offsetAt(offsets, 0)).toBe(0)
+    expect(offsetAt(offsets, 1.5)).toBe(710)
+    expect(trackAt(offsets, 710)).toBeCloseTo(1.5)
+    expect(trackAt(offsets, 1160)).toBeCloseTo(3)
+  })
+})
+
+describe('bindings and patches (headless)', () => {
+  beforeAll(() => {
+    Cyre.init()
+  })
+
+  const items = (n: number) => Array.from({length: n}, (_, i) => ({id: `i${i}`, n: i}))
+
+  it('a state is a channel on the holo branch', async () => {
+    const holo = useHolo({name: 's1'})!
+    const likes = holo.state('likes', 0)
+    const seen: number[] = []
+    likes.on(value => seen.push(value as number))
+    likes.set(2)
+    likes.update(n => (n as number) + 1)
+    await tick()
+    expect(likes.get()).toBe(3)
+    expect(seen).toEqual([2, 3])
+    // the same id hands back the same value, not a reset
+    expect(holo.state('likes', 0).get()).toBe(3)
+    holo.destroy()
+  })
+
+  it('a state made twice through createState keeps its value', () => {
+    const holo = useHolo({name: 's2'})!
+    createState(holo.path, 'x', 1).set(5)
+    expect(createState(holo.path, 'x', 1).get()).toBe(5)
+    holo.destroy()
+  })
+
+  it('patches items: insert, move, update, remove', async () => {
+    const holo = useHolo({name: 's3'})!
+    const strip = holo.create(null, {id: 'strip', items: items(3), key: 'id'})!
+    strip.insert(1, [{id: 'new', n: 9}])
+    await tick()
+    expect(strip.items().map((i: any) => i.id)).toEqual(['i0', 'new', 'i1', 'i2'])
+    strip.move('new', 3)
+    await tick()
+    expect(strip.items().map((i: any) => i.id)).toEqual(['i0', 'i1', 'i2', 'new'])
+    strip.update('i1', item => ({...item, n: 42}))
+    await tick()
+    expect((strip.items()[1] as any).n).toBe(42)
+    strip.remove('i0')
+    await tick()
+    expect(strip.state()!.count).toBe(3)
+    holo.destroy()
+  })
+})
+
+describe('trackpad flings and the snap curve', () => {
+  it('counts shrinking events (fingers lifted) and growing ones (a new swipe)', () => {
+    let state = {falling: 0, rising: 0}
+    let prev = 30
+    for (const size of [27, 25, 23]) {
+      state = wheelTrend(prev, size, state.falling, state.rising)
+      prev = size
+    }
+    expect(state.falling).toBe(3)
+    state = wheelTrend(4, 6, 0, 0)
+    state = wheelTrend(6, 9, state.falling, state.rising)
+    expect(state.rising).toBe(2)
+  })
+
+  it('a faster fling lands further', () => {
+    const slow = landing(0, 0.4, 0.002, 300, true)
+    const fast = landing(0, 0.4, 0.008, 300, true)
+    expect(fast).toBeGreaterThan(slow)
+    expect(fast).toBe(3) // 2.4 px/ms glides ~820px: nearly three 300px items
+  })
+
+  it('with launch between 1.5 and 3 times the distance the move only slows down', () => {
+    for (const launch of [1.5, 2, 3]) {
+      let last = Infinity
+      for (let t = 0; t <= 1.0001; t += 0.05) {
+        const speed = (moveAt(Math.min(1, t + 0.001), 1, launch) - moveAt(t, 1, launch)) / 0.001
+        expect(speed).toBeLessThanOrEqual(last + 1e-6)
+        expect(moveAt(t, 1, launch)).toBeLessThanOrEqual(1.000001)
+        last = speed
+      }
+    }
+  })
+})
+
+describe('tune', () => {
+  it('maps public names to the store keys and back', () => {
+    expect(gestureKey('wheelFling')).toBe('WHEEL_FLING')
+    expect(gestureKey('WHEEL_FLING')).toBe('WHEEL_FLING')
+    expect(tuningKey('GLIDE_MAX_DURATION')).toBe('glideMaxDuration')
+  })
+
+  it('changes the page-wide numbers, skips bad ones, and resets', () => {
+    const before = tune().deceleration
+    const after = tune({deceleration: 0.002, wheelFling: -1, nonsense: 3} as any)
+    expect(after.deceleration).toBe(0.002)
+    expect(after.wheelFling).toBe(8)
+    // a lower deceleration glides further (the default reads the store)
+    expect(glideDistance(0.004, 300)).toBeGreaterThan(glideDistance(0.004, 300, 0.0035))
+    expect(tune('reset').deceleration).toBe(before)
   })
 })

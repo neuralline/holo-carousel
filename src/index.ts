@@ -1,16 +1,27 @@
 // src/index.ts
 
-import Holo, {useHolo, HOLO_VERSION} from './app'
-import Accordion from './accordion'
+// The full build: the lite core plus every stage effect.
+
+import Holo from './lite'
+import {registerAllEffects} from './effects'
+
+registerAllEffects()
 
 export default Holo
-export {Holo, useHolo, Accordion, HOLO_VERSION}
-export type {CarouselHandle, HoloHandle, UseHoloOptions, HoloInitOptions} from './app'
-export type {
-  HoloOptions,
-  HoloEffect,
-  HoloRender,
-  HoloChange,
-  CyreNode
-} from './types/interface'
-export type {LinkMode} from './components/holo-features'
+export * from './lite'
+export {
+  registerEffect,
+  registerAllEffects,
+  allEffects,
+  coverflow,
+  album,
+  shuffle,
+  flip,
+  cube,
+  zoom,
+  cover,
+  reveal,
+  wipe,
+  iris,
+  kenburns
+} from './effects'

@@ -8,7 +8,7 @@ import {
   VirtualDomState
 } from '../types/interface'
 import {holoStore} from '../core/state'
-import {DATA_OPTIONS, DATA_WORDS, EVENTS, GESTURE} from '../config/holo-config'
+import {DATA_OPTIONS, DATA_WORDS, EVENTS} from '../config/holo-config'
 import {placeCarousel, syncCarousel, normalizeTrack} from './holo-render'
 
 /*
@@ -74,7 +74,7 @@ export const nearestIndex = (position: number, size: number): number =>
 export const rubberBand = (
   position: number,
   end: number,
-  resistance = GESTURE.RESISTANCE
+  resistance = holoStore.gesture().RESISTANCE
 ): number => {
   if (position > 0) return position * resistance
   if (position < end) return end + (position - end) * resistance
@@ -89,7 +89,7 @@ export const rubberTrack = (track: number, max: number): number =>
 export const releaseVelocity = (
   samples: Array<[number, number]>,
   now: number,
-  window = GESTURE.VELOCITY_WINDOW
+  window = holoStore.gesture().VELOCITY_WINDOW
 ): number => {
   const recent = samples.filter(([time]) => now - time <= window)
   if (recent.length < 2) return 0
@@ -111,9 +111,9 @@ export const releaseIndex = (
   maxIndex: number
 ): number => {
   if (size <= 0) return startIndex
-  const projected = position + velocity * GESTURE.MOMENTUM
+  const projected = position + velocity * holoStore.gesture().MOMENTUM
   let target = nearestIndex(projected, size)
-  if (Math.abs(velocity) >= GESTURE.FLICK && target === startIndex) {
+  if (Math.abs(velocity) >= holoStore.gesture().FLICK && target === startIndex) {
     target = startIndex - Math.sign(velocity)
   }
   return clampIndex(target, maxIndex)
@@ -129,7 +129,7 @@ export const releaseTrack = (
   velocity: number,
   flick: number
 ): number => {
-  let target = Math.round(track + velocity * GESTURE.MOMENTUM)
+  let target = Math.round(track + velocity * holoStore.gesture().MOMENTUM)
   const start = Math.round(startTrack)
   if (Math.abs(velocity) >= flick && target === start) {
     target = start + Math.sign(velocity)
@@ -144,8 +144,8 @@ export const releaseTrack = (
 export const glideDistance = (
   velocity: number,
   size: number,
-  deceleration = GESTURE.DECELERATION,
-  max = GESTURE.MAX_GLIDE
+  deceleration = holoStore.gesture().DECELERATION,
+  max = holoStore.gesture().MAX_GLIDE
 ): number => {
   if (!size || !velocity) return 0
   const speed = velocity * size // px/ms
@@ -159,7 +159,7 @@ export const glideDuration = (base: number, items: number): number =>
     ? 0
     : items <= 1
       ? base
-      : Math.min(GESTURE.GLIDE_MAX_DURATION, Math.round(base * (0.7 + 0.3 * Math.sqrt(items))))
+      : Math.min(holoStore.gesture().GLIDE_MAX_DURATION, Math.round(base * (0.7 + 0.3 * Math.sqrt(items))))
 
 /**
  * Where next/prev goes without wrapping. Returns -1 when there is
@@ -224,7 +224,16 @@ export const normalizeOptions = (
       case 'key':
       case 'unrender':
       case 'breakpoints':
+      case 'label':
+      case 'validate':
+      case 'onComplete':
+      case 'nextLabel':
+      case 'backLabel':
+      case 'finishLabel':
         break // not runtime options
+      case 'route':
+        io.route = value ? 1 : 0 // a function is kept by create()
+        break
       case 'loop':
         io.loop = typeof value === 'number' ? value : LOOPS[String(value)] ?? 0
         break
@@ -338,10 +347,18 @@ export const dataList = (
 /** a data carousel's key per item (the index when it has no key function) */
 export const keysOf = (
   items: unknown[],
-  key?: (item: any, index: number) => string | number
+  key?: string | ((item: any, index: number) => string | number)
 ): string[] =>
   items.map((item, index) =>
-    item === SKELETON ? `__holo-skeleton-${index}` : String(key ? key(item, index) : index)
+    item === SKELETON
+      ? `__holo-skeleton-${index}`
+      : String(
+          typeof key === 'function'
+            ? key(item, index)
+            : key && item != null
+              ? (item as Record<string, unknown>)[key] ?? index
+              : index
+        )
   )
 
 // --- the model -------------------------------------------------------

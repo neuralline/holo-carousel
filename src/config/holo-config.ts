@@ -61,7 +61,8 @@ export const ANIMATION = {
   INTERVAL: 5000
 }
 
-// Gesture tuning
+// Gesture tuning - the defaults. The live values are in the store
+// (holoStore.gesture()) and change with tune({...}); read them there.
 export const GESTURE = {
   /** px a pointer moves before Holo decides what the gesture is */
   SLOP: 6,
@@ -86,6 +87,12 @@ export const GESTURE = {
   WHEEL_DECIDE: 4,
   /** a trackpad swipe that moved this far (items) lands on the next item */
   WHEEL_INTENT: 0.3,
+  /** px per event a trackpad swipe must reach to be a fling (Holo carries it by its speed) */
+  WHEEL_FLING: 8,
+  /** shrinking events in a row that mean the fingers lifted (the system's momentum began) */
+  WHEEL_DECAY: 3,
+  /** growing events in a row that mean a new swipe started during a glide */
+  WHEEL_REGRIP: 2,
   /** how fast a released glide slows down (px/ms²) - lower glides further */
   DECELERATION: 0.0035,
   /** the furthest one glide goes (items) */
@@ -107,6 +114,8 @@ export const GESTURE = {
   /** ms resize / image loads are gathered before re-measuring */
   REFRESH_DEBOUNCE: 60
 }
+
+export type Gesture = typeof GESTURE
 
 // Default IO options
 export const DEFAULT_IO_OPTIONS = {
@@ -134,6 +143,7 @@ export const DEFAULT_IO_OPTIONS = {
   virtual: 0, // keep only the visible items in the DOM (data mode)
   buffer: 2, // items rendered beyond each side of a virtual window
   momentum: 1, // 1 = a released drag glides on by its speed; 0 = it stops where it was let go
+  route: 0, // slides are pages: path segments (see holo-router.ts)
   placeholder: 'shimmer', // while images or async items load: shimmer | pulse | blur | none
   placeholders: 0, // skeleton slots while items load (0 = as many as fit)
   progress: 0, // a bar counting down to the next auto-play move
@@ -169,7 +179,8 @@ export const DATA_OPTIONS = [
   'momentum',
   'placeholders',
   'progress',
-  'builds'
+  'builds',
+  'route'
 ] as const
 
 // data-* options that are words, not numbers
@@ -194,44 +205,14 @@ export const FEATURE_OPTIONS = [
   'placeholder'
 ] as const
 
-// Effects that always wrap: the last item sits next to the first
-export const WRAPPING_EFFECTS = ['ring', 'shuffle']
-
-// Effects whose items are stacked in one place and drawn one by one from
-// the track each frame (Holo tweens the track, so every card can follow
-// its own path - a shuffled card swings out and back under the deck)
-export const STAGE_EFFECTS = [
-  'coverflow',
-  'album',
-  'shuffle',
-  'flip',
-  'cube',
-  'zoom',
-  // presentation transitions
-  'cover',
-  'reveal',
-  'wipe',
-  'iris',
-  'kenburns'
-]
-
-// Effects that show one item in the middle (one step per move)
-export const SINGLE_EFFECTS = ['fade', 'ring', ...STAGE_EFFECTS]
-
-// 3D depth for the stage effects (carousel perspective, px)
-export const PERSPECTIVE: Record<string, number> = {
-  coverflow: 1200,
-  shuffle: 1600,
-  flip: 1000,
-  cube: 1000
-}
-
 // CSS class names (for consistency)
 export const CSS_CLASSES = {
   CAROUSEL: 'holo-carousel',
   CONTAINER: 'holo-container',
   ITEM: 'holo',
   ACTIVE: 'active',
+  /** Holo's own controls (dots, tabs) - not 'active', which page styles often size */
+  DOT_ACTIVE: 'holo-active',
   TRANSITION: 'transition',
   DRAGGING: 'holo-dragging',
   VISIBLE: 'holo-visible',
