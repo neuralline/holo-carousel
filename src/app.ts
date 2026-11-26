@@ -13,9 +13,8 @@
     Q0.0U0.0A0.0N0.0T0.0U0.0M0 - I0.0N0.0C0.0E0.0P0.0T0.0I0.0O0.0N0.0S0
 */
 
-import {Cyre, cyre, useLog, LogLevel, log} from 'cyre'
+import {cyre, log} from 'cyre'
 import type {CyreControl} from 'cyre'
-import {useMetrics} from 'cyre/metrics'
 import {holoStore} from './core/state'
 import holoCreateElement, {releasePageListeners} from './components/holo-create-element'
 import holoInitiate from './components/holo-initiate'
@@ -45,14 +44,16 @@ import {
 } from './components/holo-bind'
 import {applyRoute, currentRoute, RouterOptions, startRouter, writeRoute} from './components/holo-router'
 import {tune, GestureTuning} from './components/holo-tune'
+import {groupsOf, shownLanes} from './components/holo-groups'
 
 export const HOLO_VERSION = '3.4.0'
 
-// Set by the UMD build: that bundle carries its own copy of Cyre, so it
-// starts it. The ES and CJS builds share the app's Cyre.
+// Set by the UMD build (a <script> page). Cyre is never bundled: every build
+// takes the page's or the app's Cyre (a peer dependency - the UMD bundle reads
+// the global Cyre). On a script page with no app around it, useHolo() starts
+// Cyre quietly if nobody has.
 declare const __HOLO_STANDALONE__: boolean | undefined
 const standalone = typeof __HOLO_STANDALONE__ !== 'undefined' && __HOLO_STANDALONE__
-const standaloneControl: CyreControl | null = standalone ? Cyre.init().control || null : null
 
 // --- handles -------------------------------------------------------------
 // Handles are thin: every call reads the store by path, so a handle never
@@ -98,6 +99,10 @@ export interface CarouselHandle<T = any> {
   tabs: <C = any>(wrapper: HTMLElement, options?: TabsOptions<C>) => CarouselHandle<C> | undefined
   stepper: <C = any>(wrapper: HTMLElement, options?: StepperOptions<C>) => CarouselHandle<C> | undefined
   children: () => CarouselHandle[]
+  /** a grouped carousel's groups in order, each with its lane's handle (3.6) */
+  groups: () => Array<{key: string; handle: CarouselHandle<T>}>
+  /** the lane showing a group (move it on its own: group('act-2').next()) */
+  group: (key: string) => CarouselHandle<T> | undefined
   refresh: () => void
   destroy: () => void
 }
@@ -248,6 +253,16 @@ const carouselHandle = (path: string): CarouselHandle => {
       return current ? handleOf(stepper(current.holo, wrapper, options, path)) : undefined
     },
     children: () => (holoStore.getInstance(path)?.children || []).map(carouselHandle),
+    groups: () => {
+      const groups = groupsOf(holoStore.getInstance(path))
+      if (!groups) return []
+      return shownLanes(groups).map(n => ({key: groups.shown[n], handle: carouselHandle(groups.lanes[n])}))
+    },
+    group: key => {
+      const groups = groupsOf(holoStore.getInstance(path))
+      const n = groups ? groups.shown.indexOf(String(key)) : -1
+      return groups && n >= 0 ? carouselHandle(groups.lanes[n]) : undefined
+    },
     refresh: () => void call(path, EVENTS.REFRESH_CAROUSEL),
     destroy: () => {
       holoStore.removeInstance(path)
@@ -334,9 +349,6 @@ export function useHolo(parent?: CyreNode | UseHoloOptions, options: UseHoloOpti
 
   const state = initializeHolo(node, settings.name || HOLO_BRANCH, standalone)
   if (!state) return undefined
-  if (standalone && !state.control && standaloneControl && !node) {
-    holoStore.addHolo({...state, control: standaloneControl, owns: true})
-  }
   const handle = holoHandle(state.path)
 
   const scan = settings.scan
@@ -442,10 +454,4 @@ export default Holo
 if (typeof window !== 'undefined') {
   ;(window as any).Holo = Holo
   ;(window as any).useHolo = useHolo
-
-  // The standalone bundle's own Cyre, for pages that want its telemetry.
-  // Apps using the ES build import cyre themselves.
-  if (standalone) {
-    ;(window as any).Cyre = {Cyre, cyre, control: standaloneControl, useLog, useMetrics, LogLevel, log}
-  }
 }

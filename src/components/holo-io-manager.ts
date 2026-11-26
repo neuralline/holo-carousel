@@ -13,10 +13,13 @@ import {
   startAutoplay,
   stopAutoplay
 } from '../core/event-manager'
-import {keysOf, normalizeBreakpoints, normalizeOptions, pageTarget, setTrack} from './holo-essentials'
-import {measureCarousel, stopMove, watchImages} from './holo-render'
+import {isStaticEffect, keysOf, normalizeBreakpoints, normalizeOptions, pageTarget, setTrack} from './holo-essentials'
+import {isRtlCarousel, measureCarousel, stopMove, watchImages, watchRoom} from './holo-render'
+import {applyGestureOptions} from './holo-tune'
 import {applyBreakpoint, hashIndex, lazyLoad, writeHash} from './holo-features'
 import {routeChanged, routeReady} from './holo-router'
+import {groupMorphTargets, groupsOf, laneOptionsOf} from './holo-groups'
+import {setupZoom} from './holo-zoom'
 
 type Cleanup = () => void
 
@@ -54,8 +57,10 @@ const buildControls = (path: string): Cleanup => {
 
   const root = document.createElement('div')
   root.className = CSS_CLASSES.CONTROLS
-  const prev = button(CSS_CLASSES.PREV, 'Previous', vertical ? '↑' : '‹')
-  const next = button(CSS_CLASSES.NEXT, 'Next', vertical ? '↓' : '›')
+  // rtl: previous is on the right, pointing right
+  const rtl = !vertical && isRtlCarousel(Dom.carousel, virtualDom.io.direction)
+  const prev = button(CSS_CLASSES.PREV, 'Previous', vertical ? '↑' : rtl ? '›' : '‹')
+  const next = button(CSS_CLASSES.NEXT, 'Next', vertical ? '↓' : rtl ? '‹' : '›')
   const dots = document.createElement('div')
   dots.className = CSS_CLASSES.DOTS
   root.append(prev, dots, next)
@@ -173,9 +178,12 @@ export const setupFeatures = (path: string): Cleanup => {
   const cleanups: Cleanup[] = []
   applyA11y(path)
 
+  // grid / list: nothing to drag, wheel or page through (3.5); a grouped carousel's lanes move, not it (3.6)
+  const still = isStaticEffect(io.effect) || !!groupsOf(instance)
+
   if (io.enabled) {
     // drag / swipe
-    if (io.drag || io.swipe) {
+    if (!still && (io.drag || io.swipe)) {
       cleanups.push(
         // the whole carousel takes drags - a ring or a centred strip has
         // empty space either side, and a swipe may start on a button (a
@@ -210,21 +218,25 @@ export const setupFeatures = (path: string): Cleanup => {
 
     // trackpad swipes and the mouse wheel; what isn't the carousel's
     // bubbles on (to a parent carousel, then the page)
-    cleanups.push(
-      listen(Dom.carousel, 'wheel', (e: WheelEvent) => Touch._wheel(e, path), {passive: false})
-    )
+    if (!still) {
+      cleanups.push(
+        listen(Dom.carousel, 'wheel', (e: WheelEvent) => Touch._wheel(e, path), {passive: false})
+      )
+    }
 
     // keyboard: only the nearest carousel to the focus answers
-    if (io.keyboard) {
+    if (io.keyboard && !still) {
       cleanups.push(
         listen(Dom.carousel, 'keydown', (e: KeyboardEvent) => {
           if (e.defaultPrevented || !mine(path, e)) return
           if (e.target !== Dom.carousel && (e.target as HTMLElement).closest('button, input, textarea, select')) {
             return
           }
-          const vertical = !!holoStore.getVirtualDom(path)?.io.orientation
-          const back = vertical ? 'ArrowUp' : 'ArrowLeft'
-          const forward = vertical ? 'ArrowDown' : 'ArrowRight'
+          const now = holoStore.getVirtualDom(path)
+          const vertical = !!now?.io.orientation
+          const rtl = !vertical && !!now?.rtl
+          const back = vertical ? 'ArrowUp' : rtl ? 'ArrowRight' : 'ArrowLeft'
+          const forward = vertical ? 'ArrowDown' : rtl ? 'ArrowLeft' : 'ArrowRight'
           const channel =
             e.key === back ? EVENTS.PREV_SLIDE : e.key === forward ? EVENTS.NEXT_SLIDE : KEYS[e.key]
           if (!channel) return
@@ -235,6 +247,7 @@ export const setupFeatures = (path: string): Cleanup => {
     }
 
     if (io.controller) cleanups.push(buildControls(path))
+    if (io.pinchZoom && !still) cleanups.push(setupZoom(path))
     if (io.progress && io.animate) cleanups.push(buildProgress(path))
 
     // auto-play, held while someone is looking at or using the carousel,
@@ -331,11 +344,18 @@ export const setupCarousel = (path: string): boolean => {
 
   const {Dom} = instance
   const observers: Cleanup[] = []
-  // re-measure when the room around it changes or an image arrives
-  if (typeof ResizeObserver !== 'undefined' && Dom.carousel.parentElement) {
+  // re-measure when the room around it changes or an image arrives. The room is the parent's: a carousel made
+  // out of the page, or moved to another parent, is watched where it is now (watchRoom, on every measure)
+  if (typeof ResizeObserver !== 'undefined') {
     const sized = new ResizeObserver(() => refreshCarousel(path))
-    sized.observe(Dom.carousel.parentElement)
-    observers.push(() => sized.disconnect())
+    instance.meta.sized = sized
+    instance.meta.room = null
+    watchRoom(path)
+    observers.push(() => {
+      sized.disconnect()
+      delete instance.meta.sized
+      delete instance.meta.room
+    })
   }
   observers.push(listen(Dom.container, 'load', () => refreshCarousel(path), true))
   // entering or leaving full screen changes the room it has
@@ -391,7 +411,8 @@ export const setupCarousel = (path: string): boolean => {
  */
 export const reconfigure = (
   path: string,
-  options: Partial<HoloOptions>
+  options: Partial<HoloOptions>,
+  animate = true
 ): HoloIOOptions | undefined => {
   const instance = holoStore.getInstance(path)
   if (!instance) return undefined
@@ -399,9 +420,17 @@ export const reconfigure = (
   const index = instance.virtualDom.index
 
   const next: HoloIOOptions = {...instance.baseIo, ...normalizeOptions(options), id: instance.id}
+  const gesture = applyGestureOptions(
+    instance.meta.gesture as Record<string, number> | undefined,
+    options
+  )
+  if (gesture) instance.meta.gesture = gesture
   if (next.virtual && !data) next.virtual = 0
   const switchedWindow = !!data && !!next.virtual !== !!instance.virtualDom.io.virtual
   const effectChanged = next.effect !== instance.virtualDom.io.effect
+  // the auto-play channel is re-registered only when its interval changes: a Cyre locked after boot refuses any
+  // registration, and changing the effect or the slots of a carousel that does not auto-play must still work there
+  const intervalBefore = autoplayInterval(path)
 
   if (!instance.loaded) {
     holoStore.updateInstance(path, {baseIo: next})
@@ -420,6 +449,14 @@ export const reconfigure = (
     holoStore.updateVirtualDom(path, {io: {...next}, index: 0, track: 0, shown: 0})
     stopMove(path)
 
+    // grouped: every lane takes the new look, inside this carousel's one morph (3.6)
+    const groups = groupsOf(current)
+    if (groups) {
+      const lane = laneOptionsOf(options)
+      groups.laneOptions = {...groups.laneOptions, ...lane}
+      for (const lanePath of groups.lanes) reconfigure(lanePath, lane, false)
+    }
+
     if (data) {
       if (options.render) holoStore.updateData(path, {render: options.render})
       if (switchedWindow) {
@@ -436,7 +473,8 @@ export const reconfigure = (
     }
 
     // the auto-play interval may have changed
-    branch.channel({id: EVENTS.ANIMATE, interval: autoplayInterval(path), repeat: true})
+    const interval = autoplayInterval(path)
+    if (interval !== intervalBefore) branch.channel({id: EVENTS.ANIMATE, interval, repeat: true})
 
     if (current.Dom) {
       applyBreakpoint(path)
@@ -447,7 +485,7 @@ export const reconfigure = (
     lazyLoad(path)
   }
 
-  if (effectChanged && instance.Dom) morph(path, apply)
+  if (effectChanged && instance.Dom && animate) morph(path, apply)
   else apply()
   return holoStore.getVirtualDom(path)?.io
 }
@@ -479,21 +517,37 @@ export const morph = (path: string, change: () => void): void => {
     return
   }
 
-  // a unique name per item, so each is matched with itself in the new layout
+  // a unique name per item, so each is matched with itself in the new layout.
+  // Items out of view (inert) are left unnamed: their snapshot is not clipped
+  // by the carousel, so they would fly in from outside it - in the new layout
+  // they fade in where they land.
   const base = `holo-${path.replace(/[^a-zA-Z0-9_-]/g, '-')}`
-  const name = () => {
-    Array.from(Dom.container.children).forEach((slot, i) => {
-      const element = slot as HTMLElement
-      const key = element.dataset.key ?? String(i)
-      element.style.setProperty('view-transition-name', `${base}-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`)
-      element.style.setProperty('view-transition-class', 'holo-item')
-    })
+  // a grouped carousel names its headings and every lane's items (an item that changes group flies across)
+  const targets = (): Array<[HTMLElement, string]> => {
+    const current = holoStore.getInstance(path)
+    if (current && groupsOf(current)) return groupMorphTargets(current)
+    return Array.from(Dom.container.children).map((slot, i) => [slot as HTMLElement, (slot as HTMLElement).dataset.key ?? String(i)])
   }
+  let named: HTMLElement[] = []
   const unname = () => {
-    Array.from(Dom.container.children).forEach(slot => {
-      ;(slot as HTMLElement).style.removeProperty('view-transition-name')
-      ;(slot as HTMLElement).style.removeProperty('view-transition-class')
+    named.forEach(element => {
+      element.style.removeProperty('view-transition-name')
+      element.style.removeProperty('view-transition-class')
     })
+    named = []
+  }
+  const name = () => {
+    unname()
+    const used = new Set<string>()
+    for (const [element, key] of targets()) {
+      if (element.hasAttribute('inert') || element.closest('[inert]')) continue
+      const id = `${base}-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+      if (used.has(id)) continue // a name twice aborts the whole transition
+      used.add(id)
+      element.style.setProperty('view-transition-name', id)
+      element.style.setProperty('view-transition-class', 'holo-item')
+      named.push(element)
+    }
   }
 
   name()

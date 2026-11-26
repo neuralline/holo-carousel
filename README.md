@@ -17,9 +17,24 @@
 
 ## Installation
 
+Holo runs on [Cyre](https://www.npmjs.com/package/cyre), which is a peer
+dependency: install both, and your app and Holo share one Cyre. Holo never
+bundles it.
+
 ```sh
-npm i holo-carousel
-yarn add holo-carousel
+npm i cyre holo-carousel
+pnpm add cyre holo-carousel
+```
+
+Types ship with the package (`holo-carousel`, `holo-carousel/lite`,
+`holo-carousel/effects`).
+
+Without a bundler, load Cyre's browser build first (it sets `window.Cyre`),
+then Holo's UMD:
+
+```html
+<script src="cyre.js"></script>               <!-- window.Cyre -->
+<script src="holo-carousel/dist/umd/holo.js"></script>
 ```
 
 ## Usage
@@ -55,7 +70,8 @@ holo.scan(sidebar, {selector: '[data-holo]'})
 ```
 
 `useHolo()` with no node starts Cyre itself if no app did, and its handle
-has `control`. A plain `<script src="js/holo.js">` page gets `window.useHolo`
+has `control`. A plain `<script src="js/holo.js">` page (after the page's
+`window.Cyre`) gets `window.useHolo`
 and the v2 `window.Holo` (`Holo.INIT()` scans, as before).
 
 ### Options
@@ -66,13 +82,13 @@ Pass to `holo.create(element, options)` or `carousel.options(...)`, or as
 | option | default | |
 |---|---|---|
 | `items`, `render`, `key`, `unrender` | | data mode; `render(item, index, slot)` fills a slot; `items` may be a promise |
-| `effect` | `'slide'` | `slide`, `center`, `fade`, `ring`, `coverflow`, `album`, `shuffle`, `flip`, `cube`, `zoom`, `cover`, `reveal`, `wipe`, `iris`, `kenburns` (the last eleven come with the full build; see [Size](#size)) |
+| `effect` | `'slide'` | `slide`, `center`, `fade`, `ring`, `grid`, `list`, `coverflow`, `album`, `shuffle`, `flip`, `cube`, `zoom`, `cover`, `reveal`, `wipe`, `iris`, `kenburns` (the last eleven come with the full build; see [Size](#size)) |
 | `route` | off | the position is part of the page path (`#/work/fjord`); `true` uses each slot's `data-route` or its index, a function `(item, index) => slug` names data items |
 | `placeholder` | `'shimmer'` | while images or async items load: `shimmer`, `pulse`, `blur` (blur-up), `none` |
 | `placeholders` | fit | skeleton slots while items load |
 | `progress` | off | a bar counting down to the next auto-play move |
 | `builds` | off | `[data-build]` content in the current slide comes in step by step (`data-build="left|right|zoom|fade"`) |
-| `loop` | `false` | `'rewind'` jumps back at the ends, `'infinite'` wraps seamlessly |
+| `loop` | `false` | `'rewind'` jumps back at the ends, `'infinite'` wraps seamlessly (items of mixed widths too, when the strip is longer than the room plus its widest item) |
 | `animate` / `duration` | off / 5000 | auto-play (pauses on hover, focus, drag, hidden tab, off screen) |
 | `controller` | off | prev / next buttons, dots (`3 / 18` when they don't fit), pause |
 | `step` / `slots` | page / fit | items per next / prev; items visible |
@@ -82,9 +98,15 @@ Pass to `holo.create(element, options)` or `carousel.options(...)`, or as
 | `hash` | | keep the position in the URL: `#<hash>=<index>` |
 | `defer` | off | set up only once near the screen |
 | `momentum` | on | a released drag glides on by its speed and lands on an item; off: it stops where it was let go |
+| `flick` | 0.5 px/ms | release speed at the strip that counts as a flick (momentum + “at least one slide”) |
+| `glide` | 10 items | cap on how many slides one fling may cross |
+| `brake` | 0.005 px/ms² | deceleration after release; higher = shorter flings (`tune({deceleration})` is the same) |
 | `wheel` | off | a notched mouse wheel steps (trackpad swipes work with `swipe`) |
 | `drag`, `swipe`, `keyboard`, `snap`, `focus` | on | input; `snap: false` glides freely |
 | `orientation` | horizontal | `'vertical'` |
+| `direction` | `'auto'` | `'rtl'` runs a horizontal carousel right to left: drag, wheel, arrow keys, the prev / next buttons and the effects mirror. `'auto'` follows the page (`dir="rtl"`) |
+| `autoHeight` | off | the carousel is as tall as its tallest visible item and eases between heights |
+| `pinchZoom` | off | pinch, ctrl + wheel (a trackpad pinch) or double-tap zooms the current item (its `[data-zoom]` element, else its first image); one finger or the wheel pans while zoomed; moving on resets it. `true` = up to 3x, a number = that max |
 | `transition` | 600 | ms (0 with reduced motion) |
 
 ### Handles
@@ -103,6 +125,7 @@ c.fullscreen()            // present (Space / Enter go on)
 c.options({...})          // in place, keeps subscribers and position
 c.create(el, opts)        // a nested carousel: a sub-branch
 c.children() / refresh() / destroy()
+c.groups() / group(key)   // a grouped carousel's lanes (see Groups)
 
 // instance
 holo.create / scan / get(idOrPath) / all()
@@ -124,7 +147,10 @@ lands on the nearest item start, and the last page stops flush with the
 end. Mixed sizes are for `slide` only, and such a carousel does not wrap.
 
 Data carousels draw at most once a frame: several `set` / `patch` calls in
-one tick become one render. A markup carousel watches its container and
+one tick become one render, and a slot is filled again only when its item
+changed. A carousel re-measures when the element it takes its room from
+resizes - also when it was made out of the page or moved to another
+parent later. A markup carousel watches its container and
 refreshes when slides are added or removed.
 
 ## Presets
@@ -206,17 +232,26 @@ pnpm test        # model, maths, headless carousels
 pnpm test:e2e    # in Chrome: trackpad flings, drags, nested hand-off, touch, the demo site
 ```
 
-The browser tests build `public/js/holo.js` and run it against
+The browser tests build `public/js/holo.js` (and the demo pages' own
+`public/js/cyre.js`) and run it against
 `test/e2e/fixture.html` (fixed sizes, no images) and `public/site.html`,
 in the Chrome you have installed (`HOLO_CHROME=/path/to/chrome` for
 another).
 
+## Examples
+
+`public/examples.html` has a live demo per feature, each with the exact
+code that runs it and a Copy button: slide, infinite loop with auto-play,
+mixed widths looping, every effect on one carousel, groups, right to left,
+auto height, pinch to zoom and vertical. Build first (`pnpm build`), then
+open it from `public/`.
+
 ## Demo site
 
-`public/site.html` is a small studio site built only from holos: a routed
-pager for the pages, a Ken Burns backdrop nested in the first, a gallery
-of mixed card widths loaded from a Cyre channel with a route per project,
-likes and a filter bound to channels, tabs and a validated stepper.
+`public/site.html` is a full-screen feature tour built only from holos: a
+routed pager for each chapter, a Ken Burns backdrop on the intro, a data
+gallery (async Cyre channel, deep links, filter and pinned likes), tabs that
+explain motion and bindings, and a validated stepper with live review.
 
 ### Gestures
 
@@ -256,6 +291,55 @@ path - and a drag scrubs through the same motion. `cover`, `reveal`,
 `wipe`, `iris` and `kenburns` are presentation transitions; with
 `progress`, `builds` and `fullscreen()` a carousel is a slide deck.
 
+`grid` and `list` (3.5) are not strips: every item is shown, in wrapping
+rows or stacked, laid out by the page - nothing moves, so drag, swipe,
+wheel and keys are off. Size them with CSS custom properties on the
+carousel: `--holo-grid-min` (column width, default `160px`) and
+`--holo-gap` (default `12px`, `8px` in a list); `data-effect` on the
+carousel names the layout for your own styles. Because they are effects,
+one carousel can be a shelf, a grid and a list, and switching with
+`c.options({effect: 'grid'})` morphs every item to its new place:
+
+```js
+const projects = holo.create(el, {items, key: 'id', render, effect: 'slide', loop: 'infinite'})
+projects.options({effect: 'grid'})   // posters glide from the shelf into rows
+projects.options({effect: 'list'})   // and on into a list
+```
+
+### Groups
+
+A data carousel with a `group` option (3.6) sorts its items into groups -
+acts, seasons, categories - and shows each as a lane: a heading over a
+carousel of its own that drags, flicks and pages on its own. The look is
+the parent's: every lane takes its `effect` (and `slots`, `loop`, ...), and
+`c.options({effect})` changes them all in one morph - items fly between a
+row per group, a grid per group and a list per group, and an item whose
+group changed flies to its new lane.
+
+```js
+const scenes = holo.create(el, {
+  items, key: 'id', render,
+  group: scene => scene.act,                       // the group's key
+  groupLabel: (act, list) => `${act} · ${list.length} scenes`,
+  // or draw the heading yourself: renderGroup: (act, list, head) => { ... }
+  groups: 8,                                       // the most groups it shows
+  effect: 'slide'
+})
+scenes.group('Act 2').next()                       // one lane moves
+scenes.on('change', c => c.group)                  // which lane moved
+scenes.groups()                                    // [{key, handle}] in order
+scenes.options({effect: 'grid'})                   // every lane, one morph
+```
+
+The lanes are nested carousels (`holo/<id>/<id>-<n>`), made with the
+carousel: `groups` of them (default 8), so an app that locks Cyre after
+boot can still regroup. Groups take lanes in the order they first appear;
+a group keeps its lane - and where it is in it - while it stays; more
+groups than lanes share the last lane (Holo warns). `render` and `key`
+get each item's index within its lane. Markup: `li.holo-group` (hidden
+while unused) holds `.holo-group-head` and the lane `.holo-lane`; space
+the groups with `--holo-group-gap` (default `16px`).
+
 ### Which option turns on which input
 
 | input | option | notes |
@@ -279,13 +363,37 @@ tune()                        // read them all
 tune('reset')                 // back to the defaults
 ```
 
-Common ones: `deceleration` (0.0035 px/ms², lower glides further),
-`wheelFling` (8 px per event), `wheelDecay` (3 shrinking events mean the
-fingers lifted), `wheelIdle` (110 ms), `flick` (0.35 px/ms), `axisLock`
-(35°), `longPress` (500 ms). The full list is `GESTURE` in
+Per carousel, use the short names or the full `gesture` map:
+
+```js
+// stickier gallery: harder to fling, shorter travel
+holo.create(el, { flick: 0.45, glide: 12, brake: 0.006 })
+
+// page-wide, then markup: data-flick="0.45" data-glide="12"
+tune({ flick: 0.4, maxGlide: 20, deceleration: 0.005 })
+
+holo.create(el, { gesture: { slopTouch: 8, axisLock: 30 } })
+```
+
+Release speed is a **weighted regression** over recent touch samples (not
+just first→last). Settling uses **smootherstep** / exponential ease, not
+linear motion.
+
+Common ones: `deceleration` (0.005 px/ms² default, lower glides further),
+`wheelFling` (16 px per event the fingers must lift at for a fling; slower,
+Holo follows the gesture to its end like a drag), `wheelDecay` (5 smoothly
+shrinking events mean the fingers lifted), `wheelIdle` (110 ms), `flick` (0.45 px/ms, release
+momentum only above this), `springBack` (560 ms elastic settle at an end:
+a critically damped spring that keeps the release speed), `resistance` (0.3 rubber at the ends), `axisLock` (35°),
+`axisBias` (1.15, decides diagonals sooner), `axisCross` (55°),
+`longPress` (500 ms). The full list is `GESTURE` in
 `src/config/holo-config.ts`. `refreshDebounce` and `wheelThrottle` are read
 when a carousel is created, so set those first. `holo.tune` and
 `Holo.tune` are the same function.
+
+Turning `wheel` on for a **vertical** carousel captures trackpad and
+wheel scrolling over it — use that for full-page pagers only, not for
+ordinary vertical lists beside the page.
 
 A carousel with `null` for its element is headless: the same model and
 channels with no DOM, for tests and servers.

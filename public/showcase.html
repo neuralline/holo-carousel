@@ -504,7 +504,8 @@
   the ⚙ lines and System Vitals come straight from Cyre's own <code>useLog</code>/<code>useMetrics</code> hooks.
 </footer>
 
-<!-- Holo UMD includes Cyre v5 (auto Cyre.init); window.Cyre exposes useMetrics / log -->
+<!-- Cyre is a peer dependency: js/cyre.js sets window.Cyre (useMetrics / log), then Holo -->
+<script src="js/cyre.js"></script>
 <script src="js/holo.js"></script>
 <script>
 (function () {
@@ -568,7 +569,7 @@
     });
   }
 
-  // Real Cyre engine telemetry - window.Cyre is set by app.ts alongside
+  // Real Cyre engine telemetry - window.Cyre is set by js/cyre.js alongside
   // window.Holo, exposing useMetrics/useLog/LogLevel/log straight from the
   // 'cyre' package. Everything below is genuine engine state, not
   // anything Holo/Accordion compute about themselves.

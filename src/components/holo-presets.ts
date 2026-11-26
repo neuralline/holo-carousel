@@ -168,9 +168,10 @@ export const tabs = <T>(
       const current = all.indexOf(document.activeElement as HTMLElement)
       if (current < 0) return
       const vertical = tablist.getAttribute('aria-orientation') === 'vertical'
+      const rtl = !vertical && getComputedStyle(tablist).direction === 'rtl'
       const keys: Record<string, number> = {
-        [vertical ? 'ArrowUp' : 'ArrowLeft']: current - 1,
-        [vertical ? 'ArrowDown' : 'ArrowRight']: current + 1,
+        [vertical ? 'ArrowUp' : rtl ? 'ArrowRight' : 'ArrowLeft']: current - 1,
+        [vertical ? 'ArrowDown' : rtl ? 'ArrowLeft' : 'ArrowRight']: current + 1,
         Home: 0,
         End: all.length - 1
       }
@@ -375,7 +376,8 @@ export const pager = <T>(
       loop: 0,
       transition: 800,
       momentum: 0,
-      focus: 0
+      focus: 0,
+      gesture: {axisCross: 50, slopTouch: 8}
     },
     options as Partial<HoloOptions>,
     parent

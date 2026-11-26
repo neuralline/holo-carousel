@@ -282,7 +282,7 @@ ul {
 
 /* the page keeps scrolling across the carousel; Holo takes the other axis */
 .holo-carousel > .holo-container {
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y pinch-zoom; /* pinchZoom: Holo takes the pinch (pan-y) */
   cursor: grab;
   will-change: transform;
 }
@@ -345,10 +345,10 @@ ul {
   opacity: 0;
 }
 .holo-prev {
-  left: 10px;
+  inset-inline-start: 10px;
 }
 .holo-next {
-  right: 10px;
+  inset-inline-end: 10px;
 }
 .holo-carousel:hover .holo-prev,
 .holo-carousel:hover .holo-next,
@@ -431,6 +431,7 @@ ul {
 /* vertical carousels: buttons top and bottom, dots down the side */
 .holo-vertical .holo-prev,
 .holo-vertical .holo-next {
+  inset-inline: auto;
   left: 50%;
   margin: 0 0 0 -22px;
 }
@@ -768,4 +769,9 @@ ul {
   white-space: normal;
   font-size: 16px;
   overflow: hidden;
+}
+
+/* pinchZoom (3.7): zoomed in, the item pans instead of the carousel */
+.holo-carousel.holo-zoomed > .holo-container {
+  cursor: move;
 }

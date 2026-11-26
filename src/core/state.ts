@@ -45,6 +45,7 @@ export const createDefaultVirtualDom = (id: string): VirtualDomState => ({
   shown: 0,
   moveDuration: ANIMATION.DURATION,
   launch: null,
+  spring: false,
   step: 1,
   page: 0,
   pages: 1,

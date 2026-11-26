@@ -34,22 +34,39 @@ const copyUmdToPublic = () => ({
   }
 })
 
-// Two builds:
-//   vite build              -> es + cjs. `cyre` stays an import, so the app
-//                              and Holo share one Cyre (the app owns it).
-//   vite build --mode umd   -> umd (public/js/holo.js). A plain <script>
-//                              page has no Cyre, so this bundle carries its
-//                              own and starts it (__HOLO_STANDALONE__).
-// `npm run build` runs both. Test configuration lives in vitest.config.ts.
+// Builds - Cyre is never bundled into Holo (a peer dependency: the app or
+// the page installs both from npm and they share one Cyre):
+//   vite build                    -> es + cjs. `cyre` stays an import.
+//   vite build --mode umd         -> umd (public/js/holo.js) for <script>
+//                                    pages: reads the global `Cyre`.
+//   vite build --mode cyre-global -> public/js/cyre.js, the demo pages' own
+//                                    copy of Cyre as `window.Cyre` (from the
+//                                    dev dependency; not part of the package).
+// `npm run build` runs all three, then tsc writes dist/types. Test
+// configuration lives in vitest.config.ts.
 export default defineConfig(({mode}) => {
   const umd = mode === 'umd'
+  if (mode === 'cyre-global') {
+    return {
+      define: {'process.env.NODE_ENV': JSON.stringify('production')},
+      publicDir: false,
+      build: {
+        outDir: 'public/js',
+        emptyOutDir: false,
+        lib: {entry: path.resolve(__dirname, 'scripts/cyre-global.ts'), name: 'CyreGlobal', formats: ['iife'], fileName: () => 'cyre.js'},
+        sourcemap: true,
+        minify: 'terser',
+        target: 'es2020'
+      }
+    }
+  }
 
   return {
     plugins: umd ? [copyUmdToPublic()] : [],
+    // the library only: public/ (demo pages, images) is never copied into dist
+    publicDir: false,
     define: {
-      __HOLO_STANDALONE__: JSON.stringify(umd),
-      // Cyre's schema fast-path checks NODE_ENV; browsers have no `process`
-      ...(umd ? {'process.env.NODE_ENV': JSON.stringify('production')} : {})
+      __HOLO_STANDALONE__: JSON.stringify(umd)
     },
     build: {
       outDir: 'dist',
@@ -80,14 +97,23 @@ export default defineConfig(({mode}) => {
         }
       },
       rollupOptions: {
-        // cyre and its subpaths (cyre/metrics) are shared with the app,
-        // except in the standalone umd bundle
-        external: umd ? [] : [/^cyre(\/.*)?$/],
-        output: {
-          exports: 'named',
-          extend: true,
-          name: projectName
-        }
+        // cyre and its subpaths (cyre/metrics) are the app's / the page's
+        external: [/^cyre(\/.*)?$/],
+        output: umd
+          ? {
+              exports: 'named',
+              extend: true,
+              name: projectName,
+              // the page's Cyre (window.Cyre - e.g. public/js/cyre.js)
+              globals: {cyre: 'Cyre', 'cyre/metrics': 'Cyre'}
+            }
+          : // shared chunks next to their entries (es/, cjs/), so the
+            // package's `files` (dist/es, dist/cjs) carries them
+            (['es', 'cjs'] as const).map(format => ({
+              format,
+              exports: 'named' as const,
+              chunkFileNames: `${format}/[name]-[hash].${format === 'es' ? 'js' : 'cjs'}`
+            }))
       },
       sourcemap: true,
       minify: 'terser',

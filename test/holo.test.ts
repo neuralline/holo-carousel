@@ -19,7 +19,10 @@ import {
   nearestIndex,
   rubberBand,
   rubberTrack,
+  rubberOverscroll,
+  carrySpeed,
   releaseVelocity,
+  smoothVelocity,
   releaseIndex,
   releaseTrack,
   stepIndex,
@@ -47,18 +50,33 @@ import {
   shuffleStyle,
   flipStyle
 } from '../src/components/orientation-handler'
-import {wheelTrend, classifyMove, landing, wheelLanding, swipeDirection, isNotchedWheel, moveAngle} from '../src/components/holo-touch'
+import {
+  wheelTrend,
+  classifyMove,
+  landing,
+  wheelLanding,
+  swipeDirection,
+  isNotchedWheel,
+  moveAngle,
+  releaseGesture
+} from '../src/components/holo-touch'
 import {moveAt} from '../src/components/holo-render'
 import {wipeStyle, irisStyle, coverStyle, revealStyle} from '../src/components/orientation-handler'
 import {SKELETON, dataList} from '../src/components/holo-essentials'
 import {useHolo} from '../src/app'
 import {registerAllEffects} from '../src/effects'
-import {offsetsOf, offsetAt, trackAt} from '../src/components/orientation-handler'
+import {offsetsOf, offsetAt, trackAt, wrappedOffset, springAt, springLaunch} from '../src/components/orientation-handler'
+import {glideAt} from '../src/components/holo-render'
 import {createState} from '../src/components/holo-bind'
-import {tune, gestureKey, tuningKey} from '../src/components/holo-tune'
+import {tune, gestureKey, tuningKey, gestureOverrides, gestureTuningFrom, applyGestureOptions} from '../src/components/holo-tune'
+import {GESTURE} from '../src/config/holo-config'
+import {segmentOf, applyRoute} from '../src/components/holo-router'
+import {holoStore} from '../src/core/state'
 
 // stage effects are separate imports since 3.4 - the full build registers them
 registerAllEffects()
+
+const items = (n: number) => Array.from({length: n}, (_, i) => ({id: `i${i}`, n: i}))
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 5))
 
@@ -120,14 +138,15 @@ describe('options', () => {
 
 describe('gestures', () => {
   it('resists past either end', () => {
-    expect(rubberBand(100, -1000, 0.3)).toBeCloseTo(30)
-    expect(rubberBand(-1100, -1000, 0.3)).toBeCloseTo(-1030)
-    expect(rubberTrack(-1, 10)).toBeCloseTo(-0.3)
+    expect(rubberBand(100, -1000, 0.3)).toBeCloseTo(29.1, 1)
+    expect(rubberBand(-1100, -1000, 0.3)).toBeCloseTo(-1029.1, 0)
+    expect(rubberTrack(-1, 10)).toBeCloseTo(-0.233, 2)
     expect(rubberTrack(5, 10)).toBe(5)
   })
 
-  it('reads release speed from recent samples only', () => {
-    expect(releaseVelocity([[0, 0], [900, 0], [950, -50], [1000, -100]], 1000)).toBeCloseTo(-1)
+  it('reads release speed from recent samples (smoothed regression)', () => {
+    expect(releaseVelocity([[0, 0], [900, 0], [950, -50], [1000, -100]], 1000)).toBeCloseTo(-1, 0)
+    expect(smoothVelocity([[0, 0], [0, 1], [50, 5], [100, 9]], 100)).toBeCloseTo(0.09, 1)
     expect(releaseVelocity([[0, 0]], 10)).toBe(0)
   })
 
@@ -165,14 +184,36 @@ describe('effects', () => {
   })
 })
 
+describe('release physics', () => {
+  it('settles at an end elastically, carrying the release speed', () => {
+    const g = GESTURE
+    const hit = releaseGesture(0, -1.2, 0.02, 200, 5, false, true, true, g)
+    expect(hit.target).toBe(0)
+    expect(hit.speed).toBe(0.02)
+    expect(hit.spring).toBe(true)
+    // a fling that would glide well past the end runs into it and settles there
+    const ok = releaseGesture(0, 2.1, 0.02, 200, 5, false, true, true, g)
+    expect(ok.target).toBe(5)
+    expect(ok.speed).toBe(0.02)
+    expect(ok.spring).toBe(true)
+    // one that stops near the end glides into it
+    const near = releaseGesture(0, 4.6, 0.0004, 200, 5, false, true, true, g)
+    expect(near.target).toBe(5)
+    expect(near.spring).toBe(false)
+    expect(carrySpeed(0.001, 200, true, g.FLICK)).toBe(null)
+    expect(carrySpeed(0.004, 200, true, g.FLICK)).toBe(0.004)
+  })
+})
+
 describe('gesture recognition', () => {
   it('tells a drag along the axis from a move across it', () => {
     expect(classifyMove(3, 1, 10)).toBe('wait') // too short
     expect(classifyMove(20, 5, 10)).toBe('main') // ~14°
     expect(classifyMove(5, 20, 10)).toBe('cross') // ~76°
-    expect(classifyMove(12, 10, 10)).toBe('wait') // ~40°: diagonal, too short to tell
+    expect(classifyMove(12, 10, 10)).toBe('main') // ~40°: main dominates (axisBias)
     expect(classifyMove(30, 24, 10)).toBe('main') // diagonal, long enough: the larger side
     expect(Math.round(moveAngle(10, 10))).toBe(45)
+    expect(classifyMove(6, 14, 10, {...GESTURE, AXIS_BIAS: 1.5})).toBe('cross')
   })
 
   it('names swipe directions', () => {
@@ -184,20 +225,23 @@ describe('gesture recognition', () => {
     // dragged three items and let go still: stays there (no sliding back)
     expect(landing(4, 6.7, 0, 200, true)).toBe(7)
     expect(landing(4, 6.3, 0, 200, false)).toBe(6)
-    // a hard flick glides on: v = 4px/ms → 16 / (2 × 0.0035) px ≈ 11 items
-    expect(landing(4, 5, 0.02, 200, true)).toBe(16)
+    // a hard flick glides on: v = 4px/ms → ~8 items at default deceleration
+    expect(landing(4, 5, 0.02, 200, true)).toBe(10) // long drag: smooth glide blend
     // without momentum it stops where it was let go
     expect(landing(4, 5, 0.02, 200, false)).toBe(5)
     // a short quick flick always moves one
-    expect(landing(4, 4.2, 0.002, 200, true)).toBe(5)
-    expect(landing(4, 3.9, -0.002, 200, true)).toBe(3)
+    expect(landing(4, 4.2, 0.0025, 200, true)).toBe(5) // short drag + flick: one slide
+    expect(landing(4, 4.2, 0.01, 200, true)).toBe(5) // short drag: one slide even if fast
+    expect(landing(4, 3.9, -0.0025, 200, true)).toBe(3)
+    // between swipeDrift and one item: must not stack glide and skip a slide
+    expect(landing(4, 4.9, 0.01, 200, true)).toBe(5)
   })
 
   it('glides further the faster it is released, and takes longer', () => {
     expect(glideDistance(0, 200)).toBe(0)
-    expect(glideDistance(0.005, 200)).toBeCloseTo(0.714, 2) // 1px/ms
-    expect(glideDistance(-0.01, 200)).toBeCloseTo(-2.857, 2) // twice as fast, four times as far
-    expect(glideDistance(1, 200)).toBe(40) // capped
+    expect(glideDistance(0.005, 200)).toBeCloseTo(0.308, 1)
+    expect(glideDistance(-0.01, 200)).toBeCloseTo(-1.216, 1)
+    expect(glideDistance(1, 200)).toBe(10) // capped
     expect(glideDuration(600, 1)).toBe(600)
     expect(glideDuration(600, 9)).toBe(960)
     expect(glideDuration(600, 400)).toBe(1800)
@@ -273,7 +317,7 @@ describe('smooth moves', () => {
 
   it('a landing from rest starts at rest; a command eases out', () => {
     expect(moveAt(0.01, 2, 0)).toBeLessThan(0.001)
-    expect(moveAt(0.1, 2, null)).toBeGreaterThan(0.5) // ease-out leaves fast
+    expect(moveAt(0.5, 2, null)).toBeGreaterThan(0.5) // smootherstep ease-out
   })
 })
 
@@ -308,8 +352,6 @@ describe('useHolo (headless)', () => {
   beforeAll(() => {
     Cyre.init()
   })
-
-  const items = (n: number) => Array.from({length: n}, (_, i) => ({id: `i${i}`, n: i}))
 
   it('puts its branch under the node it is given', () => {
     const ui = cyre.branch('ui')
@@ -429,6 +471,30 @@ describe('useHolo (headless)', () => {
     holo.destroy()
   })
 
+  it('grid and list show every item and do not move', async () => {
+    const holo = useHolo({name: 'h9'})!
+    const board = holo.create(null, {id: 'board', items: items(9), effect: 'grid', loop: 'infinite'})!
+    expect(board.state()).toMatchObject({count: 9, slots: 9, atStart: true, atEnd: true})
+    board.next()
+    await tick()
+    expect(board.state()!.index).toBe(0)
+    board.options({effect: 'list'})
+    expect(board.state()).toMatchObject({count: 9, slots: 9})
+    holo.destroy()
+  })
+
+  it('a grid turns back into a strip', async () => {
+    const holo = useHolo({name: 'h10'})!
+    const shelf = holo.create(null, {id: 'shelf', items: items(8), effect: 'grid', slots: 3})!
+    expect(shelf.state()!.slots).toBe(8)
+    shelf.options({effect: 'slide', slots: 3})
+    expect(shelf.state()!.slots).toBe(3)
+    shelf.next()
+    await tick()
+    expect(shelf.state()!.index).toBe(3)
+    holo.destroy()
+  })
+
   it('a stage effect wraps and steps one item', async () => {
     const holo = useHolo({name: 'h7'})!
     const deck = holo.create(null, {id: 'deck', items: items(5), effect: 'shuffle'})!
@@ -452,6 +518,32 @@ describe('variable sizes', () => {
     expect(offsetAt(offsets, 1.5)).toBe(710)
     expect(trackAt(offsets, 710)).toBeCloseTo(1.5)
     expect(trackAt(offsets, 1160)).toBeCloseTo(3)
+  })
+
+  it('loops: track n + i is item i again, a strip length further on', () => {
+    expect(offsetAt(offsets, 4, true)).toBe(1720)
+    expect(offsetAt(offsets, 5.5, true)).toBe(1720 + 710)
+    expect(offsetAt(offsets, -1, true)).toBe(1160 - 1720)
+    expect(trackAt(offsets, 1720 + 710, true)).toBeCloseTo(5.5)
+    expect(trackAt(offsets, -560, true)).toBeCloseTo(-1)
+  })
+
+  it('a looping item sits at the copy nearest the view', () => {
+    // at item 0 with an 800px view: the last item comes before the first
+    expect(wrappedOffset(offsets, 0, 0, 800)).toBe(0)
+    expect(wrappedOffset(offsets, 3, 0, 800)).toBe(1160 - 1720)
+    // a turn on, item 0 is a strip length further
+    expect(wrappedOffset(offsets, 0, 4, 800)).toBe(1720)
+  })
+})
+
+describe('direction, autoHeight, pinchZoom options', () => {
+  it('normalises them', () => {
+    expect(normalizeOptions({direction: 'rtl'} as any).direction).toBe('rtl')
+    expect(normalizeOptions({direction: 'sideways'} as any).direction).toBe('auto')
+    expect(normalizeOptions({pinchZoom: true} as any).pinchZoom).toBe(3)
+    expect(normalizeOptions({pinchZoom: 5} as any).pinchZoom).toBe(5)
+    expect(normalizeOptions({autoHeight: true} as any).autoHeight).toBe(1)
   })
 })
 
@@ -503,6 +595,60 @@ describe('bindings and patches (headless)', () => {
   })
 })
 
+describe('router (headless)', () => {
+  beforeAll(() => {
+    Cyre.init()
+  })
+
+  it('segmentOf uses route() and waits while items load', async () => {
+    const holo = useHolo({name: 'rt'})!
+    const site = holo.create(null, {
+      id: 'site',
+      items: [{id: 'a', slug: 'work'}, {id: 'b', slug: 'about'}],
+      key: 'id',
+      route: (item: {slug: string}) => item.slug,
+      slots: 1
+    })!
+    const path = site.path
+    await tick()
+    expect(segmentOf(path, 0)).toBe('work')
+    expect(segmentOf(path, 1)).toBe('about')
+    holoStore.updateData(path, {loading: true})
+    expect(segmentOf(path, 0)).toBe('')
+    holoStore.updateData(path, {loading: false})
+    expect(applyRoute('/about', false)).toBe(1)
+    expect(holoStore.getVirtualDom(path)!.index).toBe(1)
+    expect(applyRoute('/missing', false)).toBe(0)
+    holo.destroy()
+  })
+})
+
+describe('per-carousel gesture', () => {
+  beforeAll(() => {
+    Cyre.init()
+  })
+
+  it('merges gesture options on create', () => {
+    const holo = useHolo({name: 'g1'})!
+    const strip = holo.create(null, {
+      id: 'strip',
+      items: items(2),
+      flick: 0.5,
+      glide: 8,
+      brake: 0.007,
+      gesture: {slopTouch: 20}
+    })!
+    const own = holoStore.getInstance(strip.path)!.meta.gesture as Record<string, number>
+    expect(own.SLOP_TOUCH).toBe(20)
+    expect(own.FLICK).toBe(0.5)
+    expect(own.MAX_GLIDE).toBe(8)
+    expect(own.DECELERATION).toBe(0.007)
+    expect(gestureTuningFrom({flick: 0.4, glide: 10})).toEqual({flick: 0.4, maxGlide: 10})
+    expect(applyGestureOptions({FLICK: 0.35}, {flick: 0.55})!.FLICK).toBe(0.55)
+    holo.destroy()
+  })
+})
+
 describe('trackpad flings and the snap curve', () => {
   it('counts shrinking events (fingers lifted) and growing ones (a new swipe)', () => {
     let state = {falling: 0, rising: 0}
@@ -512,16 +658,22 @@ describe('trackpad flings and the snap curve', () => {
       prev = size
     }
     expect(state.falling).toBe(3)
+    // fingers stopping on the pad drop off sharply: not the system's momentum
+    state = wheelTrend(23, 12, state.falling, state.rising)
+    expect(state.falling).toBe(0)
     state = wheelTrend(4, 6, 0, 0)
     state = wheelTrend(6, 9, state.falling, state.rising)
     expect(state.rising).toBe(2)
   })
 
   it('a faster fling lands further', () => {
-    const slow = landing(0, 0.4, 0.002, 300, true)
-    const fast = landing(0, 0.4, 0.008, 300, true)
+    const slow = landing(0, 2.4, 0.002, 300, true)
+    const fast = landing(0, 2.4, 0.008, 300, true)
     expect(fast).toBeGreaterThan(slow)
-    expect(fast).toBe(3) // 2.4 px/ms glides ~820px: nearly three 300px items
+  })
+
+  it('a short flick moves at most one slide', () => {
+    expect(landing(0, 0.4, 0.008, 300, true)).toBe(1)
   })
 
   it('with launch between 1.5 and 3 times the distance the move only slows down', () => {
@@ -548,9 +700,168 @@ describe('tune', () => {
     const before = tune().deceleration
     const after = tune({deceleration: 0.002, wheelFling: -1, nonsense: 3} as any)
     expect(after.deceleration).toBe(0.002)
-    expect(after.wheelFling).toBe(8)
+    expect(after.wheelFling).toBe(16)
     // a lower deceleration glides further (the default reads the store)
     expect(glideDistance(0.004, 300)).toBeGreaterThan(glideDistance(0.004, 300, 0.0035))
     expect(tune('reset').deceleration).toBe(before)
+  })
+})
+
+describe('groups (3.6)', () => {
+  const scenes = () => [
+    ...['a', 'b', 'c'].map(id => ({id: `one-${id}`, act: 'Act 1'})),
+    ...['a', 'b'].map(id => ({id: `two-${id}`, act: 'Act 2'})),
+    ...['a', 'b', 'c', 'd'].map(id => ({id: `three-${id}`, act: 'Act 3'}))
+  ]
+  const make = (name: string, extra: Record<string, unknown> = {}) => {
+    const holo = useHolo({name})!
+    const element = document.createElement('div')
+    document.body.appendChild(element)
+    const board = holo.create(element, {
+      id: 'board',
+      items: scenes(),
+      key: 'id',
+      render: (item: any, _i: number, slot: HTMLElement) => void (slot.textContent = item.id),
+      group: (item: any) => item.act,
+      groupLabel: (key: string, list: unknown[]) => `${key} (${list.length})`,
+      groups: 4,
+      slots: 1,
+      ...extra
+    })!
+    return {holo, element, board}
+  }
+  const wait = () => new Promise(resolve => setTimeout(resolve, 40))
+
+  it('sorts items into a lane per group, in order, with headings', () => {
+    const {holo, element, board} = make('g1')
+    expect(board.groups().map(g => g.key)).toEqual(['Act 1', 'Act 2', 'Act 3'])
+    expect(board.groups().map(g => g.handle.state()!.count)).toEqual([3, 2, 4])
+    const shown = Array.from(element.querySelectorAll<HTMLElement>('.holo-group')).filter(s => !s.hidden)
+    expect(shown.map(s => s.querySelector('.holo-group-head')!.textContent)).toEqual(['Act 1 (3)', 'Act 2 (2)', 'Act 3 (4)'])
+    expect(element.querySelectorAll('.holo-group').length).toBe(4) // the spare lane waits, hidden
+    holo.destroy()
+  })
+
+  it('each lane moves on its own, and the parent says which group moved', async () => {
+    const {holo, board} = make('g2')
+    const moved: Array<string | undefined> = []
+    board.on('change', change => moved.push(change.group))
+    board.group('Act 3')!.next()
+    await tick()
+    expect(board.group('Act 3')!.state()!.index).toBe(1)
+    expect(board.group('Act 1')!.state()!.index).toBe(0)
+    expect(moved).toContain('Act 3')
+    holo.destroy()
+  })
+
+  it('a group keeps its lane and place when items change', async () => {
+    const {holo, board} = make('g3')
+    const lane = board.group('Act 3')!
+    lane.next()
+    await tick()
+    board.set([...scenes(), {id: 'three-e', act: 'Act 3'}])
+    await wait()
+    expect(board.group('Act 3')!.path).toBe(lane.path)
+    expect(board.group('Act 3')!.state()).toMatchObject({index: 1, count: 5})
+    holo.destroy()
+  })
+
+  it('an item moving to another group moves lanes; groups follow the items order', async () => {
+    const {holo, board} = make('g4')
+    const list = scenes().map(item => (item.id === 'one-a' ? {...item, act: 'Act 2'} : item))
+    board.set(list)
+    await wait()
+    expect(board.groups().map(g => g.key)).toEqual(['Act 2', 'Act 1', 'Act 3'])
+    expect(board.group('Act 2')!.items().map((item: any) => item.id)).toEqual(['one-a', 'two-a', 'two-b'])
+    holo.destroy()
+  })
+
+  it('more groups than lanes share the last lane', async () => {
+    const {holo, board} = make('g5', {groups: 2})
+    expect(board.groups().map(g => g.key)).toEqual(['Act 1', 'Act 2'])
+    expect(board.group('Act 2')!.state()!.count).toBe(6) // Act 2 and Act 3
+    holo.destroy()
+  })
+
+  it('the look is every lane’s: options({effect}) changes them all', () => {
+    const {holo, board} = make('g6')
+    board.options({effect: 'grid'})
+    expect(board.groups().every(g => g.handle.element!.dataset.effect === 'grid')).toBe(true)
+    expect(board.group('Act 3')!.state()).toMatchObject({count: 4, slots: 4})
+    board.options({effect: 'slide', slots: 1})
+    expect(board.group('Act 3')!.state()).toMatchObject({count: 4, slots: 1})
+    holo.destroy()
+  })
+
+  it('a grouped carousel needs an element and items', () => {
+    const holo = useHolo({name: 'g7'})!
+    const headless = holo.create(null, {id: 'plain', items: scenes(), group: (item: any) => item.act})!
+    expect(headless.groups()).toEqual([])
+    expect(headless.state()!.count).toBe(9)
+    holo.destroy()
+  })
+})
+
+describe('rtl and zoom (dom)', () => {
+  const make = (name: string, options: Record<string, unknown>, dir?: string) => {
+    const holo = useHolo({name})!
+    const room = document.createElement('div')
+    if (dir) room.setAttribute('dir', dir)
+    const element = document.createElement('div')
+    const container = document.createElement('ul')
+    container.className = 'holo-container'
+    for (let i = 0; i < 4; i++) container.appendChild(document.createElement('li'))
+    element.appendChild(container)
+    room.appendChild(element)
+    document.body.appendChild(room)
+    const carousel = holo.create(element, {id: 'c', controller: true, ...options})!
+    return {holo, element, carousel}
+  }
+
+  it('direction: rtl sets dir, and previous points right', () => {
+    const {holo, element} = make('r1', {direction: 'rtl'})
+    expect(element.getAttribute('dir')).toBe('rtl')
+    expect(element.querySelector('.holo-prev')!.textContent).toBe('›')
+    expect(element.querySelector('.holo-next')!.textContent).toBe('‹')
+    holo.destroy()
+  })
+
+  it('takes the page direction by default', () => {
+    const {holo, element} = make('r2', {}, 'rtl')
+    expect(element.hasAttribute('dir')).toBe(false)
+    expect(element.querySelector('.holo-prev')!.textContent).toBe('›')
+    holo.destroy()
+  })
+
+  it('pinchZoom keeps the page from zooming the carousel and lets go when destroyed', () => {
+    const {holo, element} = make('z1', {pinchZoom: true})
+    const container = element.querySelector('.holo-container') as HTMLElement
+    expect(container.style.touchAction).toBe('pan-y')
+    holo.destroy()
+  })
+})
+
+describe('settle curves', () => {
+  it('a glide leaves at its power and slows down more and more', () => {
+    const at = (t: number) => glideAt(t, 1, 4)
+    expect(at(0)).toBe(0)
+    expect(at(1)).toBe(1)
+    expect((at(0.01) - at(0)) / 0.01).toBeCloseTo(4, 0)
+    // the last fifth covers almost nothing
+    expect(at(1) - at(0.8)).toBeLessThan(0.002)
+  })
+
+  it('a settle at an end comes to rest without a bounce, its overshoot capped', () => {
+    const omega = 6 / 560
+    // pulled 0.4 past the start, let go still: back to 0, never past it
+    for (let t = 0; t <= 2000; t += 20) expect(springAt(t, -0.4, 0, omega)).toBeLessThanOrEqual(1e-9)
+    expect(Math.abs(springAt(1200, -0.4, 0, omega))).toBeLessThan(0.001)
+    // running into the start fast from half an item in: out at most `room` past it
+    const v = springLaunch(0.5, -0.05, omega, -1, 0.2)
+    expect(Math.abs(v)).toBeGreaterThan(0)
+    let most = 0
+    for (let t = 0; t <= 2000; t += 5) most = Math.min(most, springAt(t, 0.5, v, omega))
+    expect(most).toBeLessThan(0) // it does go a little past
+    expect(most).toBeGreaterThanOrEqual(-0.2 - 0.01)
   })
 })

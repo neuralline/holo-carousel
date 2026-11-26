@@ -3,6 +3,7 @@
 import {log} from 'cyre'
 import {holoStore} from '../core/state'
 import {setupCarousel} from './holo-io-manager'
+import {applyGestureOptions} from './holo-tune'
 import {refreshCarousel, setItems, setLoading} from '../core/event-manager'
 import Touch from './holo-touch'
 import {
@@ -14,6 +15,8 @@ import {
 import {DataState, DomState, HoloIOOptions, HoloOptions} from '../types/interface'
 import {CSS_CLASSES, EVENTS, PATH_ATTRIBUTE} from '../config/holo-config'
 import {createDefaultIOOptions} from '../core/state'
+import {buildLanes, planGroups} from './holo-groups'
+import {measureCarousel} from './holo-render'
 
 /*
   Creating carousels: from markup that is already there, from data
@@ -134,7 +137,11 @@ const holoCreateElement = (
 
   const io: HoloIOOptions = {...createDefaultIOOptions(id), ...normalizeOptions(merged), id}
   if (io.virtual && !dataMode) io.virtual = 0 // a virtual window needs data
-  const deferred = !!io.defer && !!element
+  // groups: data and an element; the lanes are made now (each is a branch), so never deferred
+  const grouped = typeof merged.group === 'function' && dataMode && !!element
+  if (typeof merged.group === 'function' && !grouped) log.warn(`@HOLO create: ${id} - groups need items and an element`)
+  if (grouped) io.virtual = 0
+  const deferred = !!io.defer && !!element && !grouped
 
   const branch = parentBranch.branch(
     branchId,
@@ -171,9 +178,12 @@ const holoCreateElement = (
     branch,
     data
   })
+  if (grouped) planGroups(path, merged)
   if (typeof merged.route === 'function') {
     holoStore.getInstance(path)!.meta.routeOf = merged.route
   }
+  const gesture = applyGestureOptions(undefined, merged)
+  if (gesture) holoStore.getInstance(path)!.meta.gesture = gesture
   if (element) {
     element.setAttribute(PATH_ATTRIBUTE, path)
     ensurePageListeners()
@@ -192,6 +202,11 @@ const holoCreateElement = (
 
   if (!deferred) {
     setupCarousel(path)
+    if (grouped) {
+      buildLanes(path, holoCreateElement)
+      // the groups show at once (the lanes' items, then the stacked sections)
+      measureCarousel(path)
+    }
     // a child changes its parent's size: re-measure the parent
     if (parentPath) refreshCarousel(parentPath)
     return path

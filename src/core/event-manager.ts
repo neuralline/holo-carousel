@@ -19,7 +19,7 @@ import {
   setTrack,
   snap
 } from '../components/holo-essentials'
-import {measureCarousel, nudgeCarousel, placeCarousel, renderItems} from '../components/holo-render'
+import {measureCarousel, nudgeCarousel, placeCarousel} from '../components/holo-render'
 import {refreshLayout} from '../components/holo-io-manager'
 import {routeReady} from '../components/holo-router'
 
@@ -112,7 +112,9 @@ export const autoplayInterval = (path: string): number => {
   return io.animate > 1 ? io.animate : io.duration || 5000
 }
 
-type GoToPayload = number | {index?: number; track?: number; animate?: boolean; speed?: number}
+type GoToPayload =
+  | number
+  | {index?: number; track?: number; animate?: boolean; speed?: number; spring?: boolean}
 
 /**
  * Register one carousel's channels on its own branch. Every navigation
@@ -153,8 +155,9 @@ export const initializeCarouselChannels = (path: string): boolean => {
     if (typeof payload === 'number') return goTo(path, payload)
     const animate = payload?.animate !== false
     const speed = typeof payload?.speed === 'number' ? payload.speed : null
-    if (typeof payload?.track === 'number') return setTrack(path, payload.track, animate, speed)
-    return goTo(path, payload?.index ?? 0, animate, speed)
+    const spring = !!payload?.spring
+    if (typeof payload?.track === 'number') return setTrack(path, payload.track, animate, speed, spring)
+    return goTo(path, payload?.index ?? 0, animate, speed, spring)
   })
   branch.on(EVENTS.SNAP, () => snap(path))
   branch.on(EVENTS.NEXT_SLIDE, (payload?: {loop?: boolean}) => nxtSlide(path, payload?.loop))
@@ -245,7 +248,7 @@ export const setItems = (path: string, items: unknown[]): void => {
     // a deep link to an item that just arrived: measure without writing
     // the path, then read the address bar
     if (routed) current.meta.routed = false
-    renderItems(path)
+    // measure draws the items (data mode) - once
     measureCarousel(path)
     if (routed) routeReady(path)
   })
@@ -264,7 +267,7 @@ export const setLoading = (path: string, on: boolean, count?: number): void => {
   if (typeof count === 'number') holoStore.updateVirtualDom(path, {io: {placeholders: count} as any})
   holoStore.updateData(path, {loading: on})
   instance.Dom?.carousel.toggleAttribute('aria-busy', on)
-  if (instance.Dom) renderItems(path)
+  // measure draws the slots (data mode)
   measureCarousel(path)
 }
 

@@ -2,6 +2,7 @@
 
 import type {CyreBranch, CyreControl, CyrePublic} from 'cyre'
 import type {Gesture} from '../config/holo-config'
+import type {GestureTuning} from '../components/holo-tune'
 
 // A Holo instance's branch (holo), a carousel's (holo/<id>, nested
 // holo/<id>/<child>) or an accordion's. Every channel a carousel owns
@@ -51,6 +52,10 @@ export type HoloEffect =
   | 'center'
   | 'fade'
   | 'ring'
+  /** every item shown, in wrapping rows (3.5) - nothing moves */
+  | 'grid'
+  /** every item shown, stacked (3.5) - nothing moves */
+  | 'list'
   | 'coverflow'
   | 'album'
   | 'shuffle'
@@ -93,6 +98,14 @@ export interface HoloOptions<T = any> {
   /** false, 'rewind' (jump back at the ends) or 'infinite' (seamless) */
   loop?: boolean | number | 'rewind' | 'infinite'
   orientation?: 0 | 1 | 'horizontal' | 'vertical'
+  /** 'auto' (the page's direction), 'ltr' or 'rtl': a horizontal carousel
+   *  runs right to left in rtl (drag, keys, arrows and effects mirror) */
+  direction?: 'auto' | 'ltr' | 'rtl'
+  /** the carousel's height follows the tallest visible item */
+  autoHeight?: boolean | number
+  /** pinch, ctrl+wheel or double-tap zooms the current item; pan while
+   *  zoomed. true = up to 3x, a number = that max scale */
+  pinchZoom?: boolean | number
   /** items per next / prev (0 = a page) */
   step?: number
   /** items visible at once (0 = as many as fit) */
@@ -131,11 +144,29 @@ export interface HoloOptions<T = any> {
   key?: string | ((item: T, index: number) => string | number)
   /** called when a slot is emptied (unmount framework content here) */
   unrender?: (slot: HTMLElement, item: T) => void
+
+  // groups (3.6)
+  /** sort the items into groups - a heading and a lane each, every lane moving on its own; the look (effect) is every lane's */
+  group?: (item: T, index: number) => string | number
+  /** a group's heading text (default: its key) */
+  groupLabel?: (key: string, items: T[]) => string
+  /** draw a group's heading yourself */
+  renderGroup?: (key: string, items: T[], head: HTMLElement) => void
+  /** the most groups it shows: a lane each, made with the carousel - before a Cyre lock (default 8) */
+  groups?: number
   /** keep only the visible items (plus `buffer` either side) in the DOM */
   virtual?: boolean
   buffer?: number
   /** a released drag glides on by its speed (default true) */
   momentum?: boolean | number
+  /** release speed (px/ms at the strip) that counts as a flick; default page tune */
+  flick?: number
+  /** max items a fling may travel (`maxGlide` in tune) */
+  glide?: number
+  /** how fast a glide slows (px/ms²); higher = shorter flings (`deceleration`) */
+  brake?: number
+  /** override global tune() for this carousel only (slopTouch, axisLock, …) */
+  gesture?: Partial<GestureTuning>
 }
 
 /** the normalised options a carousel runs on (numbers, so data-* fit) */
@@ -155,6 +186,9 @@ export interface HoloIOOptions {
   /** 0 = off, 1 = rewind, 2 = infinite */
   loop: number
   orientation: number
+  direction: string
+  autoHeight: number
+  pinchZoom: number
   step: number
   slots: number
   transition: number
@@ -212,6 +246,8 @@ export interface VirtualDomState {
   track: number
   /** the carousel wraps around (track can leave 0..maxIndex) */
   wrap: boolean
+  /** a horizontal carousel running right to left */
+  rtl?: boolean
   /** the track as drawn right now (behind `track` while a move animates) */
   shown: number
   /** length of the current move (ms): longer for longer glides */
@@ -222,6 +258,8 @@ export interface VirtualDomState {
    * (buttons, keys, auto-play), which ease out
    */
   launch: number | null
+  /** elastic snap-back from an overscroll (not a fling) */
+  spring: boolean
   /** items moved by one next / prev */
   step: number
   page: number
@@ -343,6 +381,8 @@ export interface CarouselInstance {
   frame: number
   /** a running move animation (stage effects) */
   tween: {from: number; to: number; start: number; duration: number; frame: number} | null
+  /** an elastic settle at an end is drawing (unclamped, from what is seen) */
+  springing?: boolean
   /** channels registered (false while deferred) */
   loaded: boolean
   /** a timer that normalises a wrapped track after a move */
@@ -419,6 +459,8 @@ export interface HoloChange {
   slots: number
   atStart: boolean
   atEnd: boolean
+  /** a grouped carousel: the group whose lane moved */
+  group?: string
 }
 
 // --- Accordion --------------------------------------------------------

@@ -68,35 +68,94 @@ export const nearestIndex = (position: number, size: number): number =>
   size > 0 ? Math.round(-position / size) : 0
 
 /**
- * Past either end a drag keeps moving, but by less the further it goes,
- * so the edge is felt instead of hit. Works in px or in items.
+ * How far past an edge a drag or strip may go (iOS-style rubber).
+ * `dimension` is the scale (viewport px or ~1 item).
  */
+export const rubberOverscroll = (
+  over: number,
+  dimension: number,
+  friction = holoStore.gesture().RESISTANCE
+): number => {
+  const abs = Math.abs(over)
+  if (!abs) return 0
+  const dim = Math.max(dimension, 1)
+  return (Math.sign(over) || 1) * (1 - 1 / ((abs * friction) / dim + 1)) * dim
+}
+
+/** past either end in px; `span` is usually the viewport along the axis */
 export const rubberBand = (
   position: number,
   end: number,
-  resistance = holoStore.gesture().RESISTANCE
+  friction?: number,
+  span?: number
 ): number => {
-  if (position > 0) return position * resistance
-  if (position < end) return end + (position - end) * resistance
+  const f = friction ?? holoStore.gesture().RESISTANCE
+  const dim = span ?? Math.max(Math.abs(end), 200)
+  if (position > 0) return rubberOverscroll(position, dim, f)
+  if (position < end) return end + rubberOverscroll(position - end, dim, f)
   return position
 }
 
-/** a track kept inside 0..max, stretching past the ends */
-export const rubberTrack = (track: number, max: number): number =>
-  -rubberBand(-track, -max)
+/** track in items, stretching past 0..max */
+export const rubberTrack = (
+  track: number,
+  max: number,
+  dimension = 1,
+  friction?: number
+): number => {
+  const f = friction ?? holoStore.gesture().RESISTANCE
+  if (track < 0) return -rubberOverscroll(-track, dimension, f)
+  if (track > max) return max + rubberOverscroll(track - max, dimension, f)
+  return track
+}
 
-/** per ms over the last few samples of [time, value] */
-export const releaseVelocity = (
+/** release speed that may continue into a move (null = ease only) */
+export const carrySpeed = (
+  velocity: number,
+  size: number,
+  momentum: boolean,
+  flick = holoStore.gesture().FLICK
+): number | null => (momentum && Math.abs(velocity * size) >= flick ? velocity : null)
+
+/**
+ * Release speed (items/ms) from recent [time, track] samples: weighted
+ * least-squares so jitter does not swing the estimate like a straight
+ * line from first to last point.
+ */
+export const smoothVelocity = (
   samples: Array<[number, number]>,
   now: number,
   window = holoStore.gesture().VELOCITY_WINDOW
 ): number => {
   const recent = samples.filter(([time]) => now - time <= window)
   if (recent.length < 2) return 0
-  const [t0, p0] = recent[0]
-  const [t1, p1] = recent[recent.length - 1]
-  return _swipe(p1 - p0, t1 - t0)
+  if (recent.length === 2) {
+    const [t0, p0] = recent[0]
+    const [t1, p1] = recent[1]
+    return _swipe(p1 - p0, t1 - t0)
+  }
+  const t0 = recent[0][0]
+  let wSum = 0
+  let wU = 0
+  let wP = 0
+  let wUU = 0
+  let wUP = 0
+  for (const [t, p] of recent) {
+    const age = now - t
+    const w = Math.exp(-age / Math.max(window * 0.4, 8))
+    const u = t - t0
+    wSum += w
+    wU += w * u
+    wP += w * p
+    wUU += w * u * u
+    wUP += w * u * p
+  }
+  const denom = wSum * wUU - wU * wU
+  if (Math.abs(denom) < 1e-12) return 0
+  return (wSum * wUP - wU * wP) / denom
 }
+
+export const releaseVelocity = smoothVelocity
 
 /**
  * Where a drag lands, in px (kept for the px-based callers). A slow
@@ -138,8 +197,8 @@ export const releaseTrack = (
 }
 
 /**
- * How far a released drag glides on (items), decelerating evenly from its
- * release speed (items/ms): distance = v² / 2a. Pure.
+ * How far a released drag glides on (items). Blends constant deceleration
+ * (v²/2a) with a soft exponential tail so long flings ease out smoothly.
  */
 export const glideDistance = (
   velocity: number,
@@ -149,8 +208,11 @@ export const glideDistance = (
 ): number => {
   if (!size || !velocity) return 0
   const speed = velocity * size // px/ms
-  const distance = (speed * Math.abs(speed)) / (2 * deceleration) / size
-  return Math.max(-max, Math.min(max, distance))
+  const px = Math.abs(speed)
+  const linear = (px * px) / (2 * deceleration) / size
+  const soft = (px * px) / (deceleration * 2.5 + px * 0.25) / size
+  const distance = 0.6 * linear + 0.4 * soft
+  return Math.max(-max, Math.min(max, Math.sign(velocity) * distance))
 }
 
 /** a move's length (ms): the transition for one item, longer for a long glide */
@@ -230,6 +292,14 @@ export const normalizeOptions = (
       case 'nextLabel':
       case 'backLabel':
       case 'finishLabel':
+      case 'gesture':
+      case 'flick':
+      case 'glide':
+      case 'brake':
+      case 'group':
+      case 'groupLabel':
+      case 'renderGroup':
+      case 'groups':
         break // not runtime options
       case 'route':
         io.route = value ? 1 : 0 // a function is kept by create()
@@ -239,6 +309,12 @@ export const normalizeOptions = (
         break
       case 'orientation':
         io.orientation = value === 'vertical' || value === 1 || value === true ? 1 : 0
+        break
+      case 'direction':
+        io.direction = value === 'rtl' || value === 'ltr' ? value : 'auto'
+        break
+      case 'pinchZoom':
+        io.pinchZoom = value === true ? 3 : Number(value) || 0
         break
       case 'effect':
       case 'hash':
@@ -391,6 +467,17 @@ export const placeTrack = (
  * Set a carousel's geometry: how many items, how many fit, whether it
  * wraps. Keeps the current item where it was. Pure.
  */
+/**
+ * Layouts that are not a strip (3.5): every item shown at once, laid out by
+ * the page - 'grid' wraps them into rows, 'list' stacks them. Nothing moves:
+ * no drag, swipe, wheel or paging. Switching to or from one with
+ * options({effect}) morphs each item to its new place, like any effect.
+ */
+export const STATIC_EFFECTS = ['grid', 'list'] as const
+
+export const isStaticEffect = (effect: string | undefined): boolean =>
+  (STATIC_EFFECTS as readonly string[]).includes(effect || '')
+
 export const geometryOf = (
   virtualDom: VirtualDomState,
   count: number,
@@ -421,7 +508,8 @@ export const setTrack = (
   path: string,
   track: number,
   animate = true,
-  speed: number | null = null
+  speed: number | null = null,
+  spring = false
 ): boolean => {
   const instance = holoStore.getInstance(path)
   if (!instance) return false
@@ -432,6 +520,7 @@ export const setTrack = (
   holoStore.updateVirtualDom(path, placeTrack(virtualDom, track))
   virtualDom.moveDuration = animate ? glideDuration(virtualDom.duration, travel) : 0
   virtualDom.launch = animate ? speed : null
+  virtualDom.spring = spring
   holoStore.updateStyle(path, animate)
   placeCarousel(path)
   syncCarousel(path)
@@ -448,14 +537,15 @@ export const goTo = (
   path: string,
   target: number,
   animate = true,
-  speed: number | null = null
+  speed: number | null = null,
+  spring = false
 ): boolean => {
   const virtualDom = holoStore.getVirtualDom(path)
   if (!virtualDom) return false
-  if (!virtualDom.wrap) return setTrack(path, clampIndex(target, virtualDom.maxIndex), animate, speed)
+  if (!virtualDom.wrap) return setTrack(path, clampIndex(target, virtualDom.maxIndex), animate, speed, spring)
   const base = Math.round(virtualDom.track)
   const delta = shortestDelta(wrapIndex(base, virtualDom.noOfChildren), target, virtualDom.noOfChildren)
-  return setTrack(path, base + delta, animate, speed)
+  return setTrack(path, base + delta, animate, speed, spring)
 }
 
 /**

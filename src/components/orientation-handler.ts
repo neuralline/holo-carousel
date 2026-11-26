@@ -31,20 +31,32 @@ export const offsetsOf = (sizes: number[]): number[] => {
   return offsets
 }
 
-/** px from the strip's start for a (fractional) track; past the ends by the edge items' size */
-export const offsetAt = (offsets: number[], track: number): number => {
+/**
+ * px from the strip's start for a (fractional) track; past the ends by the
+ * edge items' size. `wrap`: the strip repeats every offsets[n] px (an
+ * infinite loop of mixed sizes), so track n + i is item i again.
+ */
+export const offsetAt = (offsets: number[], track: number, wrap = false): number => {
   const n = offsets.length - 1
   if (n <= 0) return 0
+  if (wrap) {
+    const turns = Math.floor(track / n)
+    return turns * offsets[n] + offsetAt(offsets, track - turns * n)
+  }
   if (track <= 0) return track * (offsets[1] - offsets[0])
   if (track >= n) return offsets[n] + (track - n) * (offsets[n] - offsets[n - 1])
   const i = Math.floor(track)
   return offsets[i] + (track - i) * (offsets[i + 1] - offsets[i])
 }
 
-/** the (fractional) track at px from the strip's start */
-export const trackAt = (offsets: number[], px: number): number => {
+/** the (fractional) track at px from the strip's start (`wrap`: see offsetAt) */
+export const trackAt = (offsets: number[], px: number, wrap = false): number => {
   const n = offsets.length - 1
   if (n <= 0) return 0
+  if (wrap && offsets[n] > 0) {
+    const turns = Math.floor(px / offsets[n])
+    return turns * n + trackAt(offsets, px - turns * offsets[n])
+  }
   if (px <= 0) return px / (offsets[1] - offsets[0] || 1)
   if (px >= offsets[n]) return n + (px - offsets[n]) / (offsets[n] - offsets[n - 1] || 1)
   let low = 0
@@ -60,7 +72,7 @@ export const trackAt = (offsets: number[], px: number): number => {
 /** a track moved by px (a drag, a trackpad delta), for either kind of item size */
 export const trackMovedBy = (virtualDom: VirtualDomState, track: number, px: number): number =>
   virtualDom.offsets
-    ? trackAt(virtualDom.offsets, offsetAt(virtualDom.offsets, track) + px)
+    ? trackAt(virtualDom.offsets, offsetAt(virtualDom.offsets, track, virtualDom.wrap) + px, virtualDom.wrap)
     : track + px / (axisSize(virtualDom) || 1)
 
 /**
@@ -70,18 +82,81 @@ export const trackMovedBy = (virtualDom: VirtualDomState, track: number, px: num
 export const stripPosition = (
   virtualDom: VirtualDomState,
   track: number,
-  stretch = false
+  stretch = false,
+  free = false
 ): number => {
   const size = axisSize(virtualDom)
   const offset = centreOffset(virtualDom)
-  const raw = offset - (virtualDom.offsets ? offsetAt(virtualDom.offsets, track) : track * size)
-  if (virtualDom.wrap) return raw
+  const raw = offset - (virtualDom.offsets ? offsetAt(virtualDom.offsets, track, virtualDom.wrap) : track * size)
+  // free: an elastic settle at an end draws its own overshoot, unclamped
+  if (virtualDom.wrap || free) return raw
+  const span = virtualDom.viewport || size * Math.max(1, virtualDom.numberOfSlots)
   if (virtualDom.io.effect === 'center') {
     const end = offset - virtualDom.maxIndex * size
-    return stretch ? offset + rubberBand(raw - offset, end - offset) : Math.min(offset, Math.max(raw, end))
+    return stretch
+      ? offset + rubberBand(raw - offset, end - offset, undefined, span)
+      : Math.min(offset, Math.max(raw, end))
   }
   const end = virtualDom.endOfSlidePosition
-  return stretch ? rubberBand(raw, end) : Math.min(0, Math.max(raw, end)) || 0
+  return stretch ? rubberBand(raw, end, undefined, span) : Math.min(0, Math.max(raw, end)) || 0
+}
+
+/**
+ * The track a strip is seen at: past an end a dragged strip is drawn
+ * rubber-banded (shorter than its track), and a settle starts from what
+ * is seen, so letting go never jumps. Inside the ends it is the track.
+ */
+export const seenTrack = (virtualDom: VirtualDomState, track: number): number => {
+  if (virtualDom.wrap || (track >= 0 && track <= virtualDom.maxIndex)) return track
+  const px = centreOffset(virtualDom) - stripPosition(virtualDom, track, true)
+  return virtualDom.offsets ? trackAt(virtualDom.offsets, px) : px / (axisSize(virtualDom) || 1)
+}
+
+/** seenTrack backwards: the (rubber-banded) track that is seen at `seen` */
+export const trackSeenAt = (virtualDom: VirtualDomState, seen: number): number => {
+  const max = virtualDom.maxIndex
+  if (virtualDom.wrap || (seen >= 0 && seen <= max)) return seen
+  const out = seen > max ? 1 : -1
+  const edge = out > 0 ? max : 0
+  let low = 0
+  let high = 50
+  for (let i = 0; i < 40; i++) {
+    const mid = (low + high) / 2
+    if (out * (seenTrack(virtualDom, edge + out * mid) - edge) < out * (seen - edge)) low = mid
+    else high = mid
+  }
+  return edge + out * low
+}
+
+/**
+ * Where a settle at an end is at `t` ms: a critically damped spring from
+ * `x0` (items from the end) leaving at `v0` (items/ms). It carries the
+ * release speed on - out a little past the end if it was still heading
+ * out - and comes to rest without a bounce or a jolt. Pure.
+ */
+export const springAt = (t: number, x0: number, v0: number, omega: number): number =>
+  (x0 + (v0 + omega * x0) * t) * Math.exp(-omega * t)
+
+/**
+ * The release speed a settle may keep so it overshoots the end by at most
+ * `room` items (beyond where it already is). Pure.
+ */
+export const springLaunch = (x0: number, v0: number, omega: number, out: number, room: number): number => {
+  const allowed = Math.max(room, out * x0)
+  const peak = (v: number): number => {
+    let most = -Infinity
+    for (let i = 0; i <= 80; i++) most = Math.max(most, out * springAt((i / 80) * (8 / omega), x0, v, omega))
+    return most
+  }
+  if (peak(v0) <= allowed) return v0
+  let low = 0
+  let high = 1
+  for (let i = 0; i < 14; i++) {
+    const mid = (low + high) / 2
+    if (peak(v0 * mid) <= allowed) low = mid
+    else high = mid
+  }
+  return v0 * low
 }
 
 /**
@@ -98,6 +173,23 @@ export const wrappedSlot = (
   const low = Math.floor(track) - Math.floor((count - slots) / 2)
   const k = Math.ceil((low - index) / count)
   return index + k * count
+}
+
+/**
+ * wrappedSlot for mixed sizes: the px item `index` sits at - the copy
+ * (offsets[index] + k·length) nearest the view at `track`.
+ */
+export const wrappedOffset = (
+  offsets: number[],
+  index: number,
+  track: number,
+  viewport: number
+): number => {
+  const length = offsets[offsets.length - 1] || 1
+  // the copy whose middle is within half a strip of the view's middle
+  const low = offsetAt(offsets, track, true) + viewport / 2 - length / 2
+  const middle = (offsets[index] + offsets[index + 1]) / 2
+  return offsets[index] + Math.ceil((low - middle) / length) * length
 }
 
 /** track positions a virtual window covers (each maps to an item) */

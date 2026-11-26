@@ -1,0 +1,286 @@
+<!doctype html>
+<!-- public/examples.html -->
+<!--
+    Neural Line
+    Reactive carousel - examples
+    H.O.L.O - C.A.R.O.U.S.E.L
+    Q0.0U0.0A0.0N0.0T0.0U0.0M0 - I0.0N0.0C0.0E0.0P0.0T0.0I0.0O0.0N0.0S0
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Holo examples</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      :root {
+        --bg: #070d14;
+        --surface: #0f1a28;
+        --line: #1e334d;
+        --text: #d4dee9;
+        --muted: #8ea2b8;
+        --accent: #3ad7ff;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      main { max-width: 960px; margin: 0 auto; padding: 32px 16px 80px; }
+      h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: .04em; }
+      h1 span { color: var(--accent); }
+      .lead { color: var(--muted); margin: 0 0 20px; }
+      nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 28px; }
+      nav.toc a { font-size: 13px; color: var(--text); text-decoration: none; padding: 4px 10px; border: 1px solid var(--line); border-radius: 20px; }
+      nav.toc a:hover, nav.toc a:focus-visible { border-color: var(--accent); outline: 0; }
+      .demo { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin: 0 0 22px; scroll-margin-top: 16px; }
+      .demo h2 { margin: 0; font-size: 18px; }
+      .demo p { margin: 2px 0 14px; color: var(--muted); font-size: 14px; }
+      .stage { position: relative; margin: 0 0 14px; }
+      .tools { display: flex; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
+      .tools button, .copy { font: inherit; font-size: 13px; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+      .tools button[aria-pressed='true'] { border-color: var(--accent); color: #fff; }
+      .code { position: relative; }
+      .code pre { margin: 0 0 8px; padding: 12px 14px; background: #050a10; border: 1px solid var(--line); border-radius: 8px; overflow: auto; }
+      .code code { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: #bfe9ff; white-space: pre; }
+      .code .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 4px; }
+      .copy { position: absolute; top: 22px; right: 8px; background: var(--surface); }
+      .install pre { margin: 0; }
+
+      /* what the demos look like: plain CSS on Holo's classes */
+      .stage .holo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+      .stage .holo { padding: 0 5px; }
+      .stage .holo-carousel { min-height: 0; }
+      .card { border-radius: 8px; padding: 14px; background: #16263a; border: 1px solid var(--line); white-space: normal; font-size: 14px; color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>H<span>O</span>LO examples</h1>
+      <p class="lead">Every demo below runs the code under it. Copy it into a page that has Cyre and Holo.</p>
+
+      <div class="demo install">
+        <h2>Setup</h2>
+        <p>Cyre is a peer dependency: install both, they share one Cyre.</p>
+        <div class="code">
+          <pre><code>npm i cyre holo-carousel
+
+import {useHolo} from 'holo-carousel'
+const holo = useHolo()
+const el = document.querySelector('#my-carousel')   // an empty &lt;div&gt; for data mode</code></pre>
+        </div>
+      </div>
+
+      <nav class="toc" aria-label="Examples"></nav>
+
+      <section class="demo" id="slide" data-title="Slide" data-note="Data mode: items in, a slot per item. Arrows, dots, drag, wheel and keys come with it.">
+        <style class="css">#slide .holo { width: 290px; height: 180px; }</style>
+        <script type="text/x-holo">
+const carousel = holo.create(el, {
+  items: Array.from({length: 12}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="Photo ${i + 1}">` },
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="loop" data-title="Infinite loop, auto-play" data-note="loop: 'infinite' never reaches an end; auto-play pauses on hover, focus and when off screen.">
+        <style class="css">#loop .holo { width: 220px; height: 150px; }</style>
+        <script type="text/x-holo">
+holo.create(el, {
+  items: Array.from({length: 8}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="">` },
+  loop: 'infinite',
+  animate: 3000,
+  progress: true,
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="mixed" data-title="Mixed widths, looping" data-note="Each item keeps its own width; an infinite loop works with them too.">
+        <style class="css">#mixed .holo { height: 150px; }</style>
+        <script type="text/x-holo">
+const widths = [260, 140, 320, 180, 220, 160, 300, 200]
+holo.create(el, {
+  items: widths.map((width, i) => ({width, src: `img/${i + 1}.jpg`})),
+  render: (item, i, slot) => {
+    slot.style.width = `${item.width}px`
+    slot.innerHTML = `<img src="${item.src}" alt="">`
+  },
+  loop: 'infinite',
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="effects" data-title="One carousel, every look" data-note="options({effect}) switches the look in place and morphs every item.">
+        <div class="tools" data-effects="slide center fade coverflow ring cube album grid list"></div>
+        <style class="css">#effects .holo { width: 260px; height: 170px; }
+#effects [data-effect=grid] .holo, #effects [data-effect=list] .holo { width: auto; height: 120px; }</style>
+        <script type="text/x-holo">
+const carousel = holo.create(el, {
+  items: Array.from({length: 9}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="">` },
+  effect: 'coverflow',
+  loop: true,
+  controller: true
+})
+// carousel.options({effect: 'ring'})
+        </script>
+      </section>
+
+      <section class="demo" id="groups" data-title="Groups" data-note="group sorts items into lanes, each with its own heading and its own movement.">
+        <style class="css">#groups .holo { width: 220px; height: 110px; }
+#groups .holo-group-head { margin: 6px 0; font: 700 14px system-ui; }</style>
+        <script type="text/x-holo">
+const scenes = Array.from({length: 18}, (_, i) => ({
+  id: `s${i}`,
+  act: `Act ${1 + Math.floor(i / 7)}`,
+  src: `img/${(i % 12) + 1}.jpg`
+}))
+holo.create(el, {
+  items: scenes,
+  key: 'id',
+  render: (scene, i, slot) => { slot.innerHTML = `<img src="${scene.src}" alt="">` },
+  group: scene => scene.act,
+  groupLabel: (act, list) => `${act} · ${list.length} scenes`
+})
+        </script>
+      </section>
+
+      <section class="demo" id="rtl" data-title="Right to left" data-note="direction: 'rtl' (or a dir=&quot;rtl&quot; page): drag, keys, arrows and effects all mirror.">
+        <style class="css">#rtl .holo { width: 290px; height: 150px; }</style>
+        <script type="text/x-holo">
+holo.create(el, {
+  items: Array.from({length: 10}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="">` },
+  direction: 'rtl',
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="height" data-title="Auto height" data-note="autoHeight: the carousel is as tall as what it shows, and eases between heights.">
+        <style class="css">#height .holo { width: 430px; }</style>
+        <script type="text/x-holo">
+const notes = [
+  'A short note.',
+  'A longer one, that wraps onto a few lines so the carousel has to grow to show all of it when it comes into view.',
+  'Medium length: a line or two.',
+  'Short again.',
+  'The longest of them all: it keeps going so the height eases up a long way, and then back down once you move on past it to the next ones.'
+]
+holo.create(el, {
+  items: notes,
+  render: (text, i, slot) => { slot.innerHTML = `<div class="card"><b>${i + 1}</b> ${text}</div>` },
+  autoHeight: true,
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="zoom" data-title="Pinch to zoom" data-note="pinchZoom: pinch, ctrl + wheel (a trackpad pinch) or double-tap zooms in; drag pans while zoomed.">
+        <style class="css">#zoom .holo { width: 870px; height: 360px; }
+#zoom img { object-fit: contain; background: #000; }</style>
+        <script type="text/x-holo">
+holo.create(el, {
+  items: Array.from({length: 6}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="">` },
+  pinchZoom: 4,
+  controller: true
+})
+        </script>
+      </section>
+
+      <section class="demo" id="vertical" data-title="Vertical" data-note="orientation: 'vertical' moves up and down; the page still scrolls across it.">
+        <style class="css">#vertical .stage { height: 330px; max-width: 480px; }
+#vertical .holo { width: 100%; height: 110px; padding: 5px 0; }</style>
+        <script type="text/x-holo">
+holo.create(el, {
+  items: Array.from({length: 10}, (_, i) => `img/${i + 1}.jpg`),
+  render: (src, i, slot) => { slot.innerHTML = `<img src="${src}" alt="">` },
+  orientation: 'vertical',
+  slots: 3,
+  wheel: true
+})
+        </script>
+      </section>
+    </main>
+
+    <!-- Cyre is a peer dependency: load it first (window.Cyre), then Holo -->
+    <script src="js/cyre.js"></script>
+    <script src="js/holo.js"></script>
+    <script>
+      ;(function () {
+        var holo = useHolo()
+        var escape = function (text) {
+          return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        }
+        var block = function (label, text) {
+          var wrap = document.createElement('div')
+          wrap.className = 'code'
+          wrap.innerHTML =
+            '<div class="label">' + label + '</div><pre><code>' + escape(text) + '</code></pre>' +
+            '<button type="button" class="copy">Copy</button>'
+          wrap.querySelector('.copy').addEventListener('click', function (e) {
+            var button = e.currentTarget
+            var done = function () {
+              button.textContent = 'Copied'
+              setTimeout(function () { button.textContent = 'Copy' }, 1200)
+            }
+            if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {})
+          })
+          return wrap
+        }
+        var toc = document.querySelector('nav.toc')
+        document.querySelectorAll('section.demo').forEach(function (demo) {
+          var link = document.createElement('a')
+          link.href = '#' + demo.id
+          link.textContent = demo.dataset.title
+          toc.appendChild(link)
+
+          var head = document.createElement('h2')
+          head.textContent = demo.dataset.title
+          var note = document.createElement('p')
+          note.textContent = demo.dataset.note
+          demo.prepend(head, note)
+
+          var stage = document.createElement('div')
+          stage.className = 'stage'
+          var el = document.createElement('div')
+          stage.appendChild(el)
+          var tools = demo.querySelector('.tools')
+          ;(tools || note).after(stage)
+
+          var script = demo.querySelector('script[type="text/x-holo"]')
+          var code = script.textContent.replace(/^\n+|\s+$/g, '')
+          var css = demo.querySelector('style.css')
+          demo.appendChild(block('JavaScript', code))
+          if (css) demo.appendChild(block('CSS', css.textContent.trim()))
+
+          // the shown code is the code that runs
+          var carousel
+          try {
+            carousel = new Function('holo', 'el', code + '\n;return typeof carousel !== "undefined" ? carousel : undefined')(holo, el)
+          } catch (error) {
+            stage.textContent = 'This demo failed: ' + error.message
+            return
+          }
+          if (tools && carousel) {
+            tools.dataset.effects.split(' ').forEach(function (effect) {
+              var button = document.createElement('button')
+              button.type = 'button'
+              button.textContent = effect
+              button.setAttribute('aria-pressed', String(effect === 'coverflow'))
+              button.addEventListener('click', function () {
+                carousel.options({effect: effect})
+                tools.querySelectorAll('button').forEach(function (other) {
+                  other.setAttribute('aria-pressed', String(other === button))
+                })
+              })
+              tools.appendChild(button)
+            })
+          }
+        })
+      })()
+    </script>
+  </body>
+</html>

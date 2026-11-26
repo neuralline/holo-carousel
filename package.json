@@ -1,6 +1,6 @@
 {
   "name": "holo-carousel",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "Reactive carousel",
   "main": "dist/cjs/index.cjs",
   "module": "dist/es/index.js",
@@ -8,17 +8,18 @@
   "public": "public/js/holo.js",
   "scripts": {
     "dev": "node scripts/dev.js",
-    "watch": "vite build --mode umd --watch",
+    "watch": "vite build --mode cyre-global && vite build --mode umd --watch",
     "serve": "vite --config vite.demo.config.ts",
     "start": "pnpm build && pnpm serve",
-    "build": "vite build && vite build --mode umd",
+    "build": "vite build && vite build --mode umd && vite build --mode cyre-global && npm run types",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vite build --mode umd && node --experimental-strip-types --test test/e2e/holo.e2e.ts",
+    "test:e2e": "vite build --mode umd && vite build --mode cyre-global && node --experimental-strip-types --test test/e2e/holo.e2e.ts",
     "lint": "eslint --ext .ts,.tsx src",
     "prepublishOnly": "npm run test && npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit --emitDeclarationOnly false"
+    "typecheck": "tsc -p tsconfig.json --noEmit --emitDeclarationOnly false",
+    "types": "tsc -p tsconfig.build.json"
   },
   "author": "Darik.",
   "license": "MIT",
@@ -28,23 +29,23 @@
     "url": "https://github.com/neuralline/holo-carousel"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "@typescript-eslint/eslint-plugin": "^8.73.0",
-    "@typescript-eslint/parser": "^8.73.0",
-    "@vitest/coverage-v8": "5.1.1",
+    "@types/node": "^26.6.10",
+    "@typescript-eslint/eslint-plugin": "^8.74.0",
+    "@typescript-eslint/parser": "^8.74.0",
+    "@vitest/coverage-v8": "5.1.2",
     "cyre": "link:../cyre",
     "eslint": "^10.15.0",
     "jsdom": "^31.0.1",
-    "playwright-core": "^1.56.0",
+    "playwright-core": "^1.65.1",
     "rimraf": "^6.1.4",
-    "terser": "^5.51.3",
+    "terser": "^5.51.4",
     "ts-jest": "^29.4.15",
     "ts-node": "^10.9.2",
     "tslib": "^2.9.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.2"
   },
   "keywords": [
     "HOLO",
@@ -60,15 +61,18 @@
   "type": "module",
   "exports": {
     ".": {
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/es/index.js",
       "require": "./dist/cjs/index.cjs",
       "browser": "./dist/umd/holo.js"
     },
     "./lite": {
+      "types": "./dist/types/lite.d.ts",
       "import": "./dist/es/lite.js",
       "require": "./dist/cjs/lite.cjs"
     },
     "./effects": {
+      "types": "./dist/types/effects.d.ts",
       "import": "./dist/es/effects.js",
       "require": "./dist/cjs/effects.cjs"
     }
@@ -76,5 +80,13 @@
   "peerDependencies": {
     "cyre": "^5.0.0"
   },
-  "types": "dist/types/index.d.ts"
+  "types": "dist/types/index.d.ts",
+  "files": [
+    "dist/es",
+    "dist/cjs",
+    "dist/umd",
+    "dist/types",
+    "README.md",
+    "LICENSE"
+  ]
 }

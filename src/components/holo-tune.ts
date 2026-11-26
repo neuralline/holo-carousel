@@ -42,6 +42,61 @@ export const tuningOf = (gesture: Gesture): GestureTuning =>
  * tune() reads them; tune('reset') puts the defaults back. Unknown names
  * and values that are not finite numbers ≥ 0 are skipped with a warning.
  */
+/**
+ * Shorthand on create / options(): `flick` (px/ms at the strip),
+ * `glide` (max items per fling), `brake` (deceleration px/ms²). Merged
+ * with `gesture: { ... }`.
+ */
+export const gestureTuningFrom = (options: {
+  gesture?: Partial<GestureTuning>
+  flick?: number
+  glide?: number
+  brake?: number
+}): Partial<GestureTuning> | undefined => {
+  const tuning: Partial<GestureTuning> = options.gesture ? {...options.gesture} : {}
+  if (options.flick !== undefined) tuning.flick = options.flick
+  if (options.glide !== undefined) tuning.maxGlide = options.glide
+  if (options.brake !== undefined) tuning.deceleration = options.brake
+  return Object.keys(tuning).length ? tuning : undefined
+}
+
+/** merge new tuning into a carousel's stored gesture overrides */
+export const applyGestureOptions = (
+  current: Partial<Gesture> | undefined,
+  options: {gesture?: Partial<GestureTuning>; flick?: number; glide?: number; brake?: number}
+): Partial<Gesture> | undefined => {
+  const patch = gestureTuningFrom(options)
+  if (
+    !patch &&
+    options.gesture === undefined &&
+    options.flick === undefined &&
+    options.glide === undefined &&
+    options.brake === undefined
+  ) {
+    return current
+  }
+  const merged = {...current, ...(patch ? gestureOverrides(patch) : {})}
+  return Object.keys(merged).length ? merged : {}
+}
+
+export const gestureOverrides = (values: Partial<GestureTuning>): Partial<Gesture> => {
+  const current = holoStore.gesture() as Record<string, number>
+  const accepted: Partial<Gesture> = {}
+  for (const [name, value] of Object.entries(values)) {
+    const key = gestureKey(name)
+    if (!(key in current)) {
+      log.warn(`@HOLO tune: no gesture setting called "${name}"`)
+      continue
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      log.warn(`@HOLO tune: ${name} needs a number ≥ 0, got ${String(value)}`)
+      continue
+    }
+    accepted[key as keyof Gesture] = value
+  }
+  return accepted
+}
+
 export const tune = (values?: Partial<GestureTuning> | 'reset'): GestureTuning => {
   if (values === 'reset') return tuningOf(holoStore.resetGesture())
   if (!values) return tuningOf(holoStore.gesture())

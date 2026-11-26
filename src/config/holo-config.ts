@@ -72,6 +72,10 @@ export const GESTURE = {
   AXIS_LOCK: 35,
   /** beyond this angle (deg) it is a move across: the page scrolls */
   AXIS_CROSS: 55,
+  /** in the band between: decide when |main| ≥ |cross| × this (and distance ≥ slop) */
+  AXIS_BIAS: 1.15,
+  /** in the band: wait until distance ≥ slop × this, unless axisBias decides */
+  DIAGONAL_SLOP: 2,
   /** ms a still press takes to become a long press */
   LONG_PRESS: 500,
   /** ms and px between two taps that make a double tap */
@@ -87,22 +91,28 @@ export const GESTURE = {
   WHEEL_DECIDE: 4,
   /** a trackpad swipe that moved this far (items) lands on the next item */
   WHEEL_INTENT: 0.3,
-  /** px per event a trackpad swipe must reach to be a fling (Holo carries it by its speed) */
-  WHEEL_FLING: 8,
-  /** shrinking events in a row that mean the fingers lifted (the system's momentum began) */
-  WHEEL_DECAY: 3,
+  /** px per event the fingers must lift at to be a fling (Holo carries it by its speed); slower, Holo follows to the end and lands on the nearest item */
+  WHEEL_FLING: 16,
+  /** smoothly shrinking events in a row that mean the fingers lifted (the system's momentum began) */
+  WHEEL_DECAY: 5,
   /** growing events in a row that mean a new swipe started during a glide */
   WHEEL_REGRIP: 2,
   /** how fast a released glide slows down (px/ms²) - lower glides further */
-  DECELERATION: 0.0035,
+  DECELERATION: 0.005,
   /** the furthest one glide goes (items) */
-  MAX_GLIDE: 40,
+  MAX_GLIDE: 10,
+  /** drag shorter than this (items) caps at one slide unless flingBoost is met */
+  SWIPE_DRIFT: 0.85,
+  /** strong flick: strip speed ≥ flick × this may glide past one slide */
+  FLING_BOOST: 1.4,
   /** longest move animation (ms), for long glides */
   GLIDE_MAX_DURATION: 1800,
-  /** how far past either end a drag can pull, as a share of the distance */
+  /** rubber stiffness at the ends (higher = tighter); used in the overscroll curve */
   RESISTANCE: 0.3,
+  /** ms an elastic settle at an end takes (a critically damped spring) */
+  SPRING_BACK: 560,
   /** release speed (px/ms) that counts as a flick */
-  FLICK: 0.35,
+  FLICK: 0.5,
   /** ms of travel a flick is projected forward by */
   MOMENTUM: 220,
   /** ms of samples the release velocity is read from */
@@ -132,11 +142,14 @@ export const DEFAULT_IO_OPTIONS = {
   duration: 0, // Auto-play interval (ms, 0 = 5000)
   loop: 0, // next/prev wrap around at the ends
   orientation: 0, // 0=horizontal, 1=vertical
+  direction: 'auto', // auto (the page's) | ltr | rtl - a horizontal carousel runs right to left in rtl
+  autoHeight: 0, // the carousel's height follows the tallest visible item
+  pinchZoom: 0, // pinch / ctrl+wheel / double-tap zooms the current item (the number: max scale, 1 = 3)
   step: 0, // Items per next/prev (0 = a page)
   slots: 0, // Items visible at once (0 = as many as fit)
   transition: 600, // Slide transition (ms)
   keyboard: 1, // Arrow keys / Home / End when focused
-  effect: 'slide' as const, // slide | center | fade | ring
+  effect: 'slide' as const, // slide | center | fade | ring | grid | list (grid/list: static layouts, 3.5)
   lazy: 1, // load data-src images this many pages ahead
   hash: '', // keep the position in the URL (#<hash>=<index>)
   defer: 0, // set up only once near the screen
@@ -177,14 +190,19 @@ export const DATA_OPTIONS = [
   'virtual',
   'buffer',
   'momentum',
+  'flick',
+  'glide',
+  'brake',
   'placeholders',
   'progress',
   'builds',
-  'route'
+  'route',
+  'autoHeight',
+  'pinchZoom'
 ] as const
 
 // data-* options that are words, not numbers
-export const DATA_WORDS = ['effect', 'hash', 'loop', 'orientation', 'placeholder'] as const
+export const DATA_WORDS = ['effect', 'hash', 'loop', 'orientation', 'placeholder', 'direction'] as const
 
 // Options that change which listeners / controls a carousel has; a
 // breakpoint that changes one of them sets the features up again
@@ -202,7 +220,9 @@ export const FEATURE_OPTIONS = [
   'virtual',
   'progress',
   'builds',
-  'placeholder'
+  'placeholder',
+  'direction',
+  'pinchZoom'
 ] as const
 
 // CSS class names (for consistency)
@@ -226,10 +246,15 @@ export const CSS_CLASSES = {
   PAUSED: 'holo-paused',
   CURRENT: 'holo-current',
   CURRENT_SLIDE: 'holo-current-slide',
+  ZOOMED: 'holo-zoomed',
   SKELETON: 'holo-skeleton',
   LOADING: 'holo-loading',
   LOADED: 'holo-loaded',
   ENTER: 'holo-enter',
   PROGRESS: 'holo-progress',
-  BURNING: 'holo-burning'
+  BURNING: 'holo-burning',
+  /** a group's section, its heading and its lane (3.6) */
+  GROUP: 'holo-group',
+  GROUP_HEAD: 'holo-group-head',
+  LANE: 'holo-lane'
 }
